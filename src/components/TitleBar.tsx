@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
+import { FileLabel } from "./FileLabel";
+import { MenuBar } from "./MenuBar";
 import { useStore } from "../state/store";
 import { languageName } from "../editor/setup";
+import { saveActiveFile } from "../lib/actions";
 import { git, inTauri } from "../lib/tauri";
 
 // Same rules as the demo linter, so the title-bar counts match the underlines.
@@ -55,10 +58,19 @@ export function TitleBar() {
         <span className="mark">◆</span> Anode
       </span>
 
+      <MenuBar />
+
       {file && (
         <span className="tb-file">
-          {file.name}
+          <FileLabel name={file.name} />
           {file.dirty && <span className="tb-dot">●</span>}
+          <button
+            className="tb-save"
+            title="Save (Ctrl+S)"
+            onClick={() => saveActiveFile()}
+          >
+            <Icon name="save" size={13} />
+          </button>
           <span className="tb-lang">{languageName(file.name)}</span>
         </span>
       )}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useStore, DEFAULT_SETTINGS, Settings } from "../state/store";
 import {
   THEMES,
@@ -31,9 +32,32 @@ export function SettingsPanel() {
   const settings = useStore((s) => s.settings);
   const setSetting = useStore((s) => s.setSetting);
   const toggle = useStore((s) => s.toggle);
+  const [paletteName, setPaletteName] = useState("");
 
   function set<K extends keyof Settings>(k: K, v: Settings[K]) {
     setSetting(k, v);
+  }
+
+  const savedPalettes = settings.savedPalettes ?? [];
+
+  function savePalette() {
+    const name = paletteName.trim();
+    if (!name || !settings.customTheme) return;
+    const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    set("savedPalettes", [...savedPalettes, { id, name, vars: settings.customTheme }]);
+    setPaletteName("");
+  }
+
+  function applyPalette(vars: Record<string, string>) {
+    set("customAccent", null);
+    set("customTheme", vars);
+  }
+
+  function deletePalette(id: string) {
+    set(
+      "savedPalettes",
+      savedPalettes.filter((p) => p.id !== id)
+    );
   }
 
   // Account sync stand-in: export/import the whole settings blob. Point these
@@ -87,6 +111,38 @@ export function SettingsPanel() {
                 <div className="nm">{th.name}</div>
               </div>
             ))}
+
+            {savedPalettes.map((sp) => {
+              const active =
+                !!settings.customTheme &&
+                JSON.stringify(settings.customTheme) === JSON.stringify(sp.vars);
+              return (
+                <div
+                  key={sp.id}
+                  className={`theme-card ${active ? "active" : ""}`}
+                  onClick={() => applyPalette(sp.vars)}
+                >
+                  <div className="swatches">
+                    {["--bg", "--bg-panel", "--accent", "--text"].map((v) => (
+                      <div key={v} className="sw" style={{ background: sp.vars[v] }} />
+                    ))}
+                  </div>
+                  <div className="nm">
+                    <span className="nm-text">{sp.name}</span>
+                    <button
+                      className="card-del"
+                      title="Delete palette"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deletePalette(sp.id);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -169,7 +225,27 @@ export function SettingsPanel() {
                   </label>
                 ))}
               </div>
-              <div className="row" style={{ marginTop: 12 }}>
+              <div className="row" style={{ marginTop: 14, gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Name this palette…"
+                  value={paletteName}
+                  onChange={(e) => setPaletteName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && savePalette()}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  className="done"
+                  disabled={!paletteName.trim()}
+                  onClick={savePalette}
+                >
+                  Save palette
+                </button>
+              </div>
+              <div className="row">
+                <label style={{ color: "var(--text-faint)" }}>
+                  Saved palettes appear with the themes above.
+                </label>
                 <button
                   className="done"
                   style={{ background: "var(--bg-active)" }}

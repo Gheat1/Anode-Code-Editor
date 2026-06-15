@@ -92,20 +92,19 @@ The Source Control panel (git icon in the left rail) auto-detects whether git is
 installed and whether the open folder is a repo — offering **Initialize
 Repository**, a commit box, and a **Sync** button as appropriate.
 
-"Sign in with GitHub" uses the OAuth **device flow**. It needs a GitHub OAuth
-app client ID (free to create):
+"Sign in with GitHub" uses the OAuth **device flow** and works out of the box —
+Anode's OAuth app client ID is built in (client IDs are public; only the client
+*secret* is sensitive, and the device flow doesn't use one). Click sign in,
+enter the shown code on github.com, and you're connected.
 
-1. GitHub → Settings → Developer settings → **OAuth Apps** → New, enabling
-   *Device Flow*.
-2. Run Anode with the client ID in the environment:
-   ```powershell
-   $env:ANODE_GITHUB_CLIENT_ID = "Ov23xxxxxxxx"; npm run app
-   ```
+To point Anode at a different OAuth app, override the client ID:
+```powershell
+$env:ANODE_GITHUB_CLIENT_ID = "Ov23xxxxxxxx"; npm run app
+```
 
-Without it, sign-in is disabled but **push/pull still work** — they go through
-Windows' Git Credential Manager, which prompts a browser login on first use. If
-you already use the `gh` CLI and are signed in there, Anode shows that identity
-automatically.
+Either way, **push/pull also work** through Windows' Git Credential Manager,
+which prompts a browser login on first use. If you already use the `gh` CLI and
+are signed in there, Anode shows that identity automatically.
 
 ## Next steps
 

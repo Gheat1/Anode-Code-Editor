@@ -1,9 +1,41 @@
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, Window};
+
+// ---------------------------------------------------------------------------
+// Rounded window corners (Windows 11). The window is frameless + transparent,
+// so Win11 won't round it automatically — we opt in via DWM so the acrylic
+// backdrop is clipped to the rounded shape.
+// ---------------------------------------------------------------------------
+#[cfg(target_os = "windows")]
+fn round_corners(window: &tauri::WebviewWindow) {
+    use std::ffi::c_void;
+    #[link(name = "dwmapi")]
+    extern "system" {
+        fn DwmSetWindowAttribute(
+            hwnd: *mut c_void,
+            attr: u32,
+            value: *const c_void,
+            size: u32,
+        ) -> i32;
+    }
+    // DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2.
+    if let Ok(hwnd) = window.hwnd() {
+        let pref: u32 = 2;
+        unsafe {
+            DwmSetWindowAttribute(
+                hwnd.0 as *mut c_void,
+                33,
+                &pref as *const u32 as *const c_void,
+                4,
+            );
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Window blur (Windows acrylic / mica). Toggled from the settings panel.
@@ -70,6 +102,25 @@ fn read_file(path: String) -> Result<String, String> {
 #[tauri::command]
 fn write_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| e.to_string())
+}
+
+// Read an image file and return it as a data: URL so it can be used directly as
+// a project icon in the webview (works for png/svg/jpg/etc, including binary).
+#[tauri::command]
+fn read_image_data_url(path: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    let mime = match path.rsplit('.').next().map(|e| e.to_lowercase()).as_deref() {
+        Some("png") => "image/png",
+        Some("svg") => "image/svg+xml",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("ico") => "image/x-icon",
+        _ => "application/octet-stream",
+    };
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:{mime};base64,{b64}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -209,6 +260,38 @@ fn git_info(path: String) -> Result<GitInfo, String> {
     })
 }
 
+#[derive(Serialize)]
+struct Commit {
+    hash: String,
+    short: String,
+    author: String,
+    date: String,
+    subject: String,
+}
+
+#[tauri::command]
+fn git_log(path: String, limit: u32) -> Result<Vec<Commit>, String> {
+    // \x1f (unit separator) between fields, one commit per line.
+    let fmt = "--pretty=format:%H%x1f%h%x1f%an%x1f%ar%x1f%s";
+    let n = format!("-n{limit}");
+    let out = git(&path, &["log", &n, fmt])?;
+    let commits = out
+        .lines()
+        .filter(|l| !l.is_empty())
+        .filter_map(|l| {
+            let mut p = l.split('\u{1f}');
+            Some(Commit {
+                hash: p.next()?.to_string(),
+                short: p.next()?.to_string(),
+                author: p.next()?.to_string(),
+                date: p.next()?.to_string(),
+                subject: p.next().unwrap_or("").to_string(),
+            })
+        })
+        .collect();
+    Ok(commits)
+}
+
 #[tauri::command]
 fn git_pull(path: String) -> Result<String, String> {
     git(&path, &["pull", "--ff-only"])
@@ -226,20 +309,20 @@ fn git_commit_all(path: String, message: String) -> Result<String, String> {
 }
 
 // ---------------------------------------------------------------------------
-// GitHub login via OAuth Device Flow. Set your OAuth app's client ID in the
-// ANODE_GITHUB_CLIENT_ID env var (or the constant below). Pushes themselves
-// also work through Git Credential Manager; this adds an explicit identity and
-// configures the gh CLI when present.
+// GitHub login via OAuth Device Flow. Anode's OAuth app client ID is baked in
+// below (client IDs are public — only the client *secret* is sensitive, and the
+// device flow doesn't use one). Override via ANODE_GITHUB_CLIENT_ID if needed.
+// Pushes also work through Git Credential Manager; this adds an explicit
+// identity and configures the gh CLI when present.
 // ---------------------------------------------------------------------------
-const GITHUB_CLIENT_ID: &str = "REPLACE_WITH_YOUR_OAUTH_APP_CLIENT_ID";
+const GITHUB_CLIENT_ID: &str = "Ov23liIFael6ExmouS1c";
 
 fn client_id() -> String {
     std::env::var("ANODE_GITHUB_CLIENT_ID").unwrap_or_else(|_| GITHUB_CLIENT_ID.to_string())
 }
 
 fn client_configured() -> bool {
-    let c = client_id();
-    !c.is_empty() && c != "REPLACE_WITH_YOUR_OAUTH_APP_CLIENT_ID"
+    !client_id().is_empty()
 }
 
 fn token_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -400,35 +483,69 @@ fn open_url(url: String) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
-// Claude Code — run the real `claude` CLI inside a pseudo-terminal and stream
-// its output to the webview, where xterm.js renders the normal TUI. No API key:
-// this IS Claude Code, just with Anode's chrome around it.
+// Pseudo-terminals — a keyed pool so we can run multiple PTYs at once: the
+// Claude Code TUI (id "claude") and an integrated shell (id "terminal"). Output
+// streams to the webview where xterm.js renders it. No API key for Claude — it
+// IS Claude Code, just with Anode's chrome around it.
 // ---------------------------------------------------------------------------
-#[derive(Default)]
-struct PtyState {
-    writer: Mutex<Option<Box<dyn Write + Send>>>,
-    master: Mutex<Option<Box<dyn MasterPty + Send>>>,
-    child: Mutex<Option<Box<dyn portable_pty::Child + Send + Sync>>>,
+struct PtySession {
+    writer: Box<dyn Write + Send>,
+    master: Box<dyn MasterPty + Send>,
+    child: Box<dyn portable_pty::Child + Send + Sync>,
 }
 
-fn kill_pty(state: &PtyState) {
-    if let Some(mut child) = state.child.lock().unwrap().take() {
-        let _ = child.kill();
+#[derive(Default)]
+struct PtyManager {
+    sessions: Mutex<HashMap<String, PtySession>>,
+}
+
+#[derive(Clone, Serialize)]
+struct PtyOutput {
+    id: String,
+    chunk: String,
+}
+
+fn kill_session(mgr: &PtyManager, id: &str) {
+    if let Some(mut s) = mgr.sessions.lock().unwrap().remove(id) {
+        let _ = s.child.kill();
     }
-    *state.writer.lock().unwrap() = None;
-    *state.master.lock().unwrap() = None;
+}
+
+// `program`: Some("claude") runs Claude Code; anything else opens a shell.
+fn build_command(program: Option<&str>) -> CommandBuilder {
+    match program {
+        Some("claude") => {
+            if cfg!(windows) {
+                // `claude` is usually a .cmd shim, so go through cmd.exe (PATHEXT).
+                let mut c = CommandBuilder::new("cmd");
+                c.arg("/c");
+                c.arg("claude");
+                c
+            } else {
+                CommandBuilder::new("claude")
+            }
+        }
+        _ => {
+            if cfg!(windows) {
+                CommandBuilder::new("powershell")
+            } else {
+                CommandBuilder::new(std::env::var("SHELL").unwrap_or_else(|_| "bash".into()))
+            }
+        }
+    }
 }
 
 #[tauri::command]
-fn claude_start(
+fn pty_start(
     app: AppHandle,
-    state: State<PtyState>,
+    mgr: State<PtyManager>,
+    id: String,
+    program: Option<String>,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    // Tear down any previous session so toggling the panel doesn't leak procs.
-    kill_pty(&state);
+    kill_session(&mgr, &id);
 
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -440,16 +557,7 @@ fn claude_start(
         })
         .map_err(|e| e.to_string())?;
 
-    // On Windows `claude` is usually a .cmd shim, so launch it through cmd.exe
-    // (which resolves PATHEXT); elsewhere invoke it directly.
-    let mut cmd = if cfg!(windows) {
-        let mut c = CommandBuilder::new("cmd");
-        c.arg("/c");
-        c.arg("claude");
-        c
-    } else {
-        CommandBuilder::new("claude")
-    };
+    let mut cmd = build_command(program.as_deref());
     if let Some(dir) = cwd {
         if !dir.is_empty() {
             cmd.cwd(dir);
@@ -457,16 +565,21 @@ fn claude_start(
     }
 
     let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
-    drop(pair.slave); // release the slave handle once the child owns it
+    drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
 
-    *state.writer.lock().unwrap() = Some(writer);
-    *state.master.lock().unwrap() = Some(pair.master);
-    *state.child.lock().unwrap() = Some(child);
+    mgr.sessions.lock().unwrap().insert(
+        id.clone(),
+        PtySession {
+            writer,
+            master: pair.master,
+            child,
+        },
+    );
 
-    // Pump PTY output to the frontend as it arrives.
+    let emit_id = id.clone();
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
@@ -474,52 +587,62 @@ fn claude_start(
                 Ok(0) => break,
                 Ok(n) => {
                     let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
-                    if app.emit("claude://output", chunk).is_err() {
+                    if app
+                        .emit(
+                            "pty://output",
+                            PtyOutput {
+                                id: emit_id.clone(),
+                                chunk,
+                            },
+                        )
+                        .is_err()
+                    {
                         break;
                     }
                 }
                 Err(_) => break,
             }
         }
-        let _ = app.emit("claude://exit", ());
+        let _ = app.emit("pty://exit", emit_id.clone());
     });
 
     Ok(())
 }
 
 #[tauri::command]
-fn claude_write(state: State<PtyState>, data: String) -> Result<(), String> {
-    if let Some(w) = state.writer.lock().unwrap().as_mut() {
-        w.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
-        w.flush().map_err(|e| e.to_string())?;
+fn pty_write(mgr: State<PtyManager>, id: String, data: String) -> Result<(), String> {
+    if let Some(s) = mgr.sessions.lock().unwrap().get_mut(&id) {
+        s.writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+        s.writer.flush().map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
 #[tauri::command]
-fn claude_resize(state: State<PtyState>, cols: u16, rows: u16) -> Result<(), String> {
-    if let Some(m) = state.master.lock().unwrap().as_ref() {
-        m.resize(PtySize {
-            rows,
-            cols,
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-        .map_err(|e| e.to_string())?;
+fn pty_resize(mgr: State<PtyManager>, id: String, cols: u16, rows: u16) -> Result<(), String> {
+    if let Some(s) = mgr.sessions.lock().unwrap().get(&id) {
+        s.master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
 #[tauri::command]
-fn claude_kill(state: State<PtyState>) {
-    kill_pty(&state);
+fn pty_kill(mgr: State<PtyManager>, id: String) {
+    kill_session(&mgr, &id);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(PtyState::default())
+        .manage(PtyManager::default())
         .setup(|app| {
             // Apply acrylic on launch so the blurred background is on by default.
             #[cfg(target_os = "windows")]
@@ -527,6 +650,7 @@ pub fn run() {
                 use window_vibrancy::apply_acrylic;
                 if let Some(win) = app.get_webview_window("main") {
                     let _ = apply_acrylic(&win, Some((18, 18, 22, 125)));
+                    round_corners(&win);
                 }
             }
             Ok(())
@@ -536,10 +660,12 @@ pub fn run() {
             read_dir,
             read_file,
             write_file,
+            read_image_data_url,
             git_status,
             git_available,
             git_init,
             git_info,
+            git_log,
             git_pull,
             git_push,
             git_commit_all,
@@ -548,10 +674,10 @@ pub fn run() {
             github_user,
             github_logout,
             open_url,
-            claude_start,
-            claude_write,
-            claude_resize,
-            claude_kill
+            pty_start,
+            pty_write,
+            pty_resize,
+            pty_kill
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anode");

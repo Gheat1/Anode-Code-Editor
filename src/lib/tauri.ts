@@ -23,6 +23,8 @@ export const fs = {
   readFile: (path: string) => invoke<string>("read_file", { path }),
   writeFile: (path: string, contents: string) =>
     invoke<void>("write_file", { path, contents }),
+  readImageDataUrl: (path: string) =>
+    invoke<string>("read_image_data_url", { path }),
 };
 
 // ---- Dialog --------------------------------------------------------------
@@ -30,6 +32,16 @@ export async function pickFolder(): Promise<string | null> {
   if (!inTauri) return null;
   const { open } = await import("@tauri-apps/plugin-dialog");
   const res = await open({ directory: true, multiple: false });
+  return typeof res === "string" ? res : null;
+}
+
+export async function pickImage(): Promise<string | null> {
+  if (!inTauri) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const res = await open({
+    multiple: false,
+    filters: [{ name: "Image", extensions: ["png", "svg", "jpg", "jpeg", "gif", "webp", "ico"] }],
+  });
   return typeof res === "string" ? res : null;
 }
 
@@ -55,10 +67,19 @@ export interface GitInfo {
   remote: string | null;
 }
 
+export interface Commit {
+  hash: string;
+  short: string;
+  author: string;
+  date: string;
+  subject: string;
+}
+
 export const git = {
   available: () => invoke<boolean>("git_available"),
   init: (path: string) => invoke<string>("git_init", { path }),
   info: (path: string) => invoke<GitInfo>("git_info", { path }),
+  log: (path: string, limit = 20) => invoke<Commit[]>("git_log", { path, limit }),
   status: (path: string) => invoke<GitStatus>("git_status", { path }),
   pull: (path: string) => invoke<string>("git_pull", { path }),
   push: (path: string) => invoke<string>("git_push", { path }),
@@ -89,22 +110,30 @@ export const openUrl = (url: string) =>
 export const setBlur = (enabled: boolean) =>
   inTauri ? invoke<void>("set_blur", { enabled }) : Promise.resolve();
 
-// ---- Claude Code (PTY) ---------------------------------------------------
-export const claudeCli = {
-  start: (cwd: string | null, cols: number, rows: number) =>
-    invoke<void>("claude_start", { cwd, cols, rows }),
-  write: (data: string) => invoke<void>("claude_write", { data }),
-  resize: (cols: number, rows: number) =>
-    invoke<void>("claude_resize", { cols, rows }),
-  kill: () => invoke<void>("claude_kill"),
+// ---- Pseudo-terminals ----------------------------------------------------
+// Keyed by id: "claude" runs Claude Code, "terminal" opens a shell.
+export const pty = {
+  start: (
+    id: string,
+    program: string | null,
+    cwd: string | null,
+    cols: number,
+    rows: number
+  ) => invoke<void>("pty_start", { id, program, cwd, cols, rows }),
+  write: (id: string, data: string) => invoke<void>("pty_write", { id, data }),
+  resize: (id: string, cols: number, rows: number) =>
+    invoke<void>("pty_resize", { id, cols, rows }),
+  kill: (id: string) => invoke<void>("pty_kill", { id }),
 };
 
-// Subscribe to PTY output / exit. Returns an unlisten function.
-export async function onClaudeOutput(cb: (chunk: string) => void) {
+// Subscribe to PTY output / exit (all sessions). Returns an unlisten function.
+export async function onPtyOutput(cb: (id: string, chunk: string) => void) {
   const { listen } = await import("@tauri-apps/api/event");
-  return listen<string>("claude://output", (e) => cb(e.payload));
+  return listen<{ id: string; chunk: string }>("pty://output", (e) =>
+    cb(e.payload.id, e.payload.chunk)
+  );
 }
-export async function onClaudeExit(cb: () => void) {
+export async function onPtyExit(cb: (id: string) => void) {
   const { listen } = await import("@tauri-apps/api/event");
-  return listen("claude://exit", () => cb());
+  return listen<string>("pty://exit", (e) => cb(e.payload));
 }

@@ -102,6 +102,10 @@ function FsTree({ rootPath }: { rootPath: string }) {
 function DemoTree() {
   const openFile = useStore((s) => s.openFile);
   const activeFileId = useStore((s) => s.activeFileId);
+  const welcomeDismissed = useStore((s) => s.welcomeDismissed);
+  if (welcomeDismissed) {
+    return <div className="tree-hint">Add a folder from the left rail to start.</div>;
+  }
   return (
     <>
       {Object.values(WELCOME_FILES).map((f) => (

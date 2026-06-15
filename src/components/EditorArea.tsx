@@ -1,6 +1,9 @@
 import { Icon } from "./Icon";
+import { FileLabel } from "./FileLabel";
 import { EditorPane } from "./EditorPane";
 import { MarkdownPreview } from "./MarkdownPreview";
+import { TerminalPanel } from "./TerminalPanel";
+import { ResizeHandle } from "./ResizeHandle";
 import { useStore } from "../state/store";
 import { WELCOME_FILES } from "../data/welcome";
 
@@ -10,14 +13,28 @@ export function EditorArea() {
   const setActiveFile = useStore((s) => s.setActiveFile);
   const closeFile = useStore((s) => s.closeFile);
   const openFile = useStore((s) => s.openFile);
+  const dismissWelcome = useStore((s) => s.dismissWelcome);
   const showPreview = useStore((s) => s.showPreview);
+  const showTerminal = useStore((s) => s.showTerminal);
+  const splitView = useStore((s) => s.splitView);
+  const splitFileId = useStore((s) => s.splitFileId);
+  const setSplitFile = useStore((s) => s.setSplitFile);
+  const splitWidth = useStore((s) => s.splitWidth);
+  const setSplitWidth = useStore((s) => s.setSplitWidth);
+  const toggle = useStore((s) => s.toggle);
 
   const activeFile = openFiles.find((f) => f.id === activeFileId);
   const isMarkdown = activeFile?.name.endsWith(".md");
+  const rightId = splitFileId ?? activeFileId;
 
-  if (openFiles.length === 0) {
-    return (
-      <section className="editor-area">
+  function onCloseTab(id: string) {
+    if (id in WELCOME_FILES) dismissWelcome();
+    closeFile(id);
+  }
+
+  return (
+    <section className="editor-area">
+      {openFiles.length === 0 ? (
         <div className="empty">
           <div className="inner">
             <Icon name="code" size={40} />
@@ -33,43 +50,93 @@ export function EditorArea() {
             </div>
           </div>
         </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="editor-area">
-      <div className="tabs">
-        {openFiles.map((f) => (
-          <div
-            key={f.id}
-            className={`tab ${f.id === activeFileId ? "active" : ""}`}
-            onClick={() => setActiveFile(f.id)}
-          >
-            <Icon name={f.name.endsWith(".md") ? "markdown" : "code"} size={14} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-              {f.name}
-            </span>
-            {f.dirty ? (
-              <span className="dot" />
-            ) : (
-              <span
-                className="close"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  closeFile(f.id);
-                }}
-              >
-                <Icon name="close" size={13} />
-              </span>
-            )}
+      ) : (
+        <>
+          <div className="tabs">
+            <div className="tab-strip">
+              {openFiles.map((f) => (
+                <div
+                  key={f.id}
+                  className={`tab ${f.id === activeFileId ? "active" : ""}`}
+                  onClick={() => setActiveFile(f.id)}
+                >
+                  <Icon name={f.name.endsWith(".md") ? "markdown" : "code"} size={14} />
+                  <FileLabel name={f.name} />
+                  {f.dirty ? (
+                    <span className="dot" />
+                  ) : (
+                    <span
+                      className="close"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCloseTab(f.id);
+                      }}
+                    >
+                      <Icon name="close" size={13} />
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              className={`tab-action ${splitView ? "active" : ""}`}
+              title="Split editor"
+              onClick={() => toggle("splitView")}
+            >
+              <Icon name="split" size={16} />
+            </button>
           </div>
-        ))}
-      </div>
 
-      <div className="editor-host">
-        {isMarkdown && showPreview ? <MarkdownPreview /> : <EditorPane />}
-      </div>
+          {isMarkdown && showPreview ? (
+            <div className="editor-host">
+              <MarkdownPreview />
+            </div>
+          ) : splitView ? (
+            <div className="editor-host split">
+              <div className="split-pane" style={{ width: splitWidth }}>
+                <EditorPane fileId={activeFileId ?? undefined} />
+                <ResizeHandle
+                  axis="x"
+                  side="right"
+                  value={splitWidth}
+                  min={260}
+                  max={1100}
+                  dir={1}
+                  onChange={setSplitWidth}
+                />
+              </div>
+              <div className="split-pane grow">
+                <div className="split-head">
+                  <select
+                    value={rightId ?? ""}
+                    onChange={(e) => setSplitFile(e.target.value)}
+                  >
+                    {openFiles.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="split-close"
+                    title="Close split"
+                    onClick={() => toggle("splitView")}
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </div>
+                {rightId && <EditorPane fileId={rightId} />}
+              </div>
+            </div>
+          ) : (
+            <div className="editor-host">
+              <EditorPane />
+            </div>
+          )}
+        </>
+      )}
+
+      {showTerminal && <TerminalPanel />}
     </section>
   );
 }

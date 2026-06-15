@@ -3,11 +3,19 @@ import { persist } from "zustand/middleware";
 import { THEMES, themeFromAccent, applyTheme } from "../styles/themes";
 
 // ---- Settings: one serializable blob. Account sync = push/pull this object.
+// A user-saved palette that shows up alongside the built-in presets.
+export interface SavedPalette {
+  id: string;
+  name: string;
+  vars: Record<string, string>;
+}
+
 export interface Settings {
   themeId: string;
   customAccent: string | null; // when set, overrides themeId via palette chooser
   customBase: string;
   customTheme: Record<string, string> | null; // full hand-tuned palette (highest priority)
+  savedPalettes: SavedPalette[]; // user palettes, synced with the rest of settings
   fontFamily: string;
   fontSize: number; // px, applies app-wide
   editorFontFamily: string;
@@ -21,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   customAccent: null,
   customBase: "#0e0e12",
   customTheme: null,
+  savedPalettes: [],
   fontFamily: "'Inter', system-ui, sans-serif",
   fontSize: 14,
   editorFontFamily: "'JetBrains Mono', 'Cascadia Code', monospace",
@@ -36,7 +45,8 @@ export interface Project {
   id: string;
   name: string;
   path: string;
-  color: string; // tint behind the monochrome icon
+  color: string; // tint behind the icon
+  icon?: string; // emoji char, or a data: URL for an uploaded png/svg
 }
 
 export interface OpenFile {
@@ -57,21 +67,42 @@ interface AppState {
   showPreview: boolean;
   showClaude: boolean;
   showSettings: boolean;
+  showSidebar: boolean;
+  showTerminal: boolean;
+  splitView: boolean;
+  splitFileId: string | null;
+  splitWidth: number;
+  welcomeDismissed: boolean;
   sidebarView: SidebarView;
   sidebarWidth: number;
   claudeWidth: number;
+  terminalHeight: number;
 
   setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   setSidebarView: (v: SidebarView) => void;
   setSidebarWidth: (w: number) => void;
   setClaudeWidth: (w: number) => void;
+  setTerminalHeight: (h: number) => void;
+  setSplitFile: (id: string | null) => void;
+  setSplitWidth: (w: number) => void;
+  dismissWelcome: () => void;
+  updateProject: (id: string, patch: Partial<Project>) => void;
+  markSaved: (id: string) => void;
   addProject: (p: Project) => void;
   setActiveProject: (id: string) => void;
   openFile: (f: OpenFile) => void;
   closeFile: (id: string) => void;
   setActiveFile: (id: string) => void;
   updateFileContent: (id: string, content: string) => void;
-  toggle: (key: "showPreview" | "showClaude" | "showSettings") => void;
+  toggle: (
+    key:
+      | "showPreview"
+      | "showClaude"
+      | "showSettings"
+      | "showSidebar"
+      | "showTerminal"
+      | "splitView"
+  ) => void;
 }
 
 export const useStore = create<AppState>()(
@@ -87,9 +118,16 @@ export const useStore = create<AppState>()(
       showPreview: false,
       showClaude: true,
       showSettings: false,
+      showSidebar: true,
+      showTerminal: false,
+      splitView: false,
+      splitFileId: null,
+      splitWidth: 560,
+      welcomeDismissed: false,
       sidebarView: "explorer",
       sidebarWidth: 240,
       claudeWidth: 420,
+      terminalHeight: 240,
 
       setSetting: (key, value) =>
         set((s) => ({ settings: { ...s.settings, [key]: value } })),
@@ -97,6 +135,23 @@ export const useStore = create<AppState>()(
       setSidebarView: (v) => set({ sidebarView: v }),
       setSidebarWidth: (w) => set({ sidebarWidth: w }),
       setClaudeWidth: (w) => set({ claudeWidth: w }),
+      setTerminalHeight: (h) => set({ terminalHeight: h }),
+      setSplitFile: (id) => set({ splitFileId: id }),
+      setSplitWidth: (w) => set({ splitWidth: w }),
+      dismissWelcome: () => set({ welcomeDismissed: true }),
+      updateProject: (id, patch) =>
+        set((s) => ({
+          projects: s.projects.map((p) =>
+            p.id === id ? { ...p, ...patch } : p
+          ),
+        })),
+
+      markSaved: (id) =>
+        set((s) => ({
+          openFiles: s.openFiles.map((f) =>
+            f.id === id ? { ...f, dirty: false } : f
+          ),
+        })),
 
       addProject: (p) =>
         set((s) => ({ projects: [...s.projects, p], activeProjectId: p.id })),
@@ -131,7 +186,19 @@ export const useStore = create<AppState>()(
 
       toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<AppState>),
     }),
-    { name: "anode-state" }
+    {
+      name: "anode-state",
+      // Deep-merge settings so newly added fields (e.g. darkness, savedPalettes)
+      // pick up their defaults for users with older persisted state.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppState>;
+        return {
+          ...current,
+          ...p,
+          settings: { ...DEFAULT_SETTINGS, ...(p.settings ?? {}) },
+        };
+      },
+    }
   )
 );
 

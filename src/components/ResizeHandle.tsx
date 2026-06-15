@@ -1,6 +1,8 @@
-// A draggable vertical divider. `dir` is +1 when the panel grows as you drag
-// right (left sidebar) and -1 when it grows as you drag left (right panel).
+// A draggable divider. axis "x" = vertical bar (resizes width), axis "y" =
+// horizontal bar (resizes height). `dir` is +1 when the panel grows as you drag
+// in the positive axis direction, -1 when it grows as you drag back.
 export function ResizeHandle({
+  axis = "x",
   side,
   value,
   min,
@@ -8,7 +10,8 @@ export function ResizeHandle({
   dir,
   onChange,
 }: {
-  side: "left" | "right";
+  axis?: "x" | "y";
+  side: "left" | "right" | "top" | "bottom";
   value: number;
   min: number;
   max: number;
@@ -17,10 +20,11 @@ export function ResizeHandle({
 }) {
   function onMouseDown(e: React.MouseEvent) {
     e.preventDefault();
-    const startX = e.clientX;
+    const start = axis === "x" ? e.clientX : e.clientY;
     const startVal = value;
     const move = (ev: MouseEvent) => {
-      const next = startVal + dir * (ev.clientX - startX);
+      const pos = axis === "x" ? ev.clientX : ev.clientY;
+      const next = startVal + dir * (pos - start);
       onChange(Math.max(min, Math.min(max, next)));
     };
     const up = () => {
@@ -29,7 +33,7 @@ export function ResizeHandle({
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
-    document.body.style.cursor = "col-resize";
+    document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
     document.body.style.userSelect = "none";
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);

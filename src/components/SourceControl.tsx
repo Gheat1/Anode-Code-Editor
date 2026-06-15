@@ -9,6 +9,7 @@ import {
   inTauri,
   GitInfo,
   DeviceStart,
+  Commit,
 } from "../lib/tauri";
 import { languageName } from "../editor/setup";
 
@@ -32,6 +33,7 @@ export function SourceControl() {
 
   const [gitInstalled, setGitInstalled] = useState<boolean | null>(null);
   const [info, setInfo] = useState<GitInfo | null>(null);
+  const [commits, setCommits] = useState<Commit[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,10 +46,21 @@ export function SourceControl() {
   const refresh = useCallback(async () => {
     if (!inTauri || !path) {
       setInfo(null);
+      setCommits([]);
       return;
     }
     try {
-      setInfo(await git.info(path));
+      const i = await git.info(path);
+      setInfo(i);
+      if (i.is_repo && i.has_commits) {
+        try {
+          setCommits(await git.log(path, 25));
+        } catch {
+          setCommits([]);
+        }
+      } else {
+        setCommits([]);
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -253,6 +266,24 @@ export function SourceControl() {
                 </div>
               );
             })}
+          </div>
+
+          <div className="scm-section-label">
+            Commits <span className="scm-count">{commits.length}</span>
+          </div>
+          <div className="scm-commits">
+            {commits.length === 0 && <div className="scm-clean">No commits yet</div>}
+            {commits.map((c) => (
+              <div
+                key={c.hash}
+                className="scm-commit-row"
+                title={`${c.short} · ${c.author} · ${c.date}`}
+              >
+                <Icon name="commit" size={14} />
+                <span className="scm-commit-msg">{c.subject}</span>
+                <span className="scm-commit-meta">{c.date}</span>
+              </div>
+            ))}
           </div>
         </>
       )}
