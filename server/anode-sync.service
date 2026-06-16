@@ -1,0 +1,21 @@
+[Unit]
+Description=Anode sync server (accounts + settings)
+After=network.target
+
+[Service]
+Type=simple
+User=anode
+WorkingDirectory=/srv/anode
+# Listen only on localhost; Caddy reverse-proxies /anode/api to it.
+Environment=ANODE_BIND=127.0.0.1:8787
+Environment=ANODE_DB=/srv/anode/anode.db
+ExecStart=/srv/anode/anode-sync
+Restart=on-failure
+RestartSec=3
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

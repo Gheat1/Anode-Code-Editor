@@ -5,6 +5,13 @@ node_modules/
 dist/
 src-tauri/target/
 src-tauri/gen/
+server/target/
+
+# Server runtime data (SQLite db + dropped-in release binary)
+server/*.db
+server/*.db-wal
+server/*.db-shm
+server/web/Anode.exe
 
 # Logs
 *.log

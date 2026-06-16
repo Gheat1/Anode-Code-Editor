@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Icon, IconName } from "./Icon";
+import { AccountSync } from "./AccountSync";
 import { useStore, DEFAULT_SETTINGS, Settings } from "../state/store";
 import {
   THEMES,
@@ -442,31 +443,37 @@ export function SettingsPanel() {
             )}
 
             {section === "sync" && (
-              <div className="group">
-                <label>Account sync</label>
-                <div className="row">
-                  <label style={{ color: "var(--text-faint)" }}>
-                    Settings persist locally and serialize to one blob. Copy to move
-                    between machines, or wire these to your backend.
-                  </label>
+              <>
+                <div className="group">
+                  <label>Anode account</label>
+                  <AccountSync />
                 </div>
-                <div className="row">
-                  <button
-                    className="done"
-                    style={{ background: "var(--bg-active)" }}
-                    onClick={exportSettings}
-                  >
-                    Copy settings
-                  </button>
-                  <button
-                    className="done"
-                    style={{ background: "var(--bg-active)" }}
-                    onClick={importSettings}
-                  >
-                    Paste settings
-                  </button>
+                <div className="group">
+                  <label>Manual backup</label>
+                  <div className="row">
+                    <label style={{ color: "var(--text-faint)" }}>
+                      No account? Copy your settings blob to move them between
+                      machines by hand.
+                    </label>
+                  </div>
+                  <div className="row">
+                    <button
+                      className="done"
+                      style={{ background: "var(--bg-active)" }}
+                      onClick={exportSettings}
+                    >
+                      Copy settings
+                    </button>
+                    <button
+                      className="done"
+                      style={{ background: "var(--bg-active)" }}
+                      onClick={importSettings}
+                    >
+                      Paste settings
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>

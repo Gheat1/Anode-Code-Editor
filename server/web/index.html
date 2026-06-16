@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anode — A Simple, Clean, Efficient Editor</title>
+    <meta name="description" content="Anode — a simple, clean, efficient, Claude-native code editor. Built from scratch, not on VS Code." />
+    <meta property="og:title" content="Anode" />
+    <meta property="og:description" content="A Simple, Clean, Efficient Editor." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%237c8cff' d='M12 4l7 8-7 8-7-8z'/%3E%3C/svg%3E" />
+    <style>
+      :root {
+        --bg: #0e0e12;
+        --bg-elev: #16161d;
+        --panel: #1b1b23;
+        --border: #26262f;
+        --text: #e6e6ee;
+        --dim: #a0a0b0;
+        --faint: #6c6c7c;
+        --accent: #7c8cff;
+        --accent-2: #a882ff;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      body {
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
+        background: radial-gradient(1200px 600px at 50% -10%, #1a1a28, var(--bg));
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.55;
+        min-height: 100vh;
+      }
+      a { color: inherit; text-decoration: none; }
+      .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+      header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 22px 0;
+      }
+      .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: .02em; }
+      .mark {
+        width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        box-shadow: 0 4px 16px #7c8cff44;
+      }
+      .mark svg { width: 17px; height: 17px; }
+      nav { display: flex; gap: 22px; color: var(--dim); font-size: 14px; }
+      nav a:hover { color: var(--text); }
+
+      .hero { text-align: center; padding: 80px 0 60px; }
+      .hero .pill {
+        display: inline-flex; align-items: center; gap: 7px;
+        font-size: 12px; color: var(--dim);
+        background: var(--panel); border: 1px solid var(--border);
+        padding: 5px 12px; border-radius: 20px; margin-bottom: 26px;
+      }
+      .hero .dot { width: 7px; height: 7px; border-radius: 50%; background: #6bdc9b; }
+      .hero h1 {
+        font-size: clamp(40px, 7vw, 68px); line-height: 1.05; font-weight: 720;
+        letter-spacing: -0.02em; margin-bottom: 18px;
+      }
+      .hero h1 .accent {
+        background: linear-gradient(120deg, var(--accent), var(--accent-2));
+        -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      }
+      .hero p { font-size: 18px; color: var(--dim); max-width: 560px; margin: 0 auto 32px; }
+      .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+      .btn {
+        display: inline-flex; align-items: center; gap: 9px;
+        padding: 13px 24px; border-radius: 12px; font-size: 15px; font-weight: 600;
+        transition: transform .12s, filter .14s, background .14s;
+      }
+      .btn:active { transform: scale(.97); }
+      .btn.primary { background: var(--accent); color: #fff; box-shadow: 0 8px 28px #7c8cff33; }
+      .btn.primary:hover { filter: brightness(1.08); }
+      .btn.ghost { background: var(--panel); border: 1px solid var(--border); color: var(--text); }
+      .btn.ghost:hover { background: var(--bg-elev); }
+      .sub { color: var(--faint); font-size: 13px; margin-top: 14px; }
+
+      .shot {
+        margin: 50px auto 0; max-width: 880px;
+        border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+        background: var(--bg-elev); box-shadow: 0 30px 90px rgba(0,0,0,.5);
+      }
+      .shot .bar { display: flex; gap: 7px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+      .shot .bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--border); }
+      .shot .body { display: grid; grid-template-columns: 54px 200px 1fr 280px; height: 300px; }
+      .shot .col { border-right: 1px solid var(--border); }
+      .shot .c1 { background: #14141b; }
+      .shot .c2 { background: #181820; }
+      .shot .c4 { background: #181820; border-right: none; }
+      .shot .line { height: 9px; border-radius: 5px; background: #2a2a35; margin: 12px; }
+      .shot .line.a { background: #7c8cff55; width: 60%; }
+      .shot .line.s { width: 40%; }
+
+      section.features { padding: 70px 0; }
+      .features h2 { font-size: 30px; text-align: center; margin-bottom: 8px; letter-spacing: -0.01em; }
+      .features .lede { text-align: center; color: var(--dim); margin-bottom: 40px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+      .card {
+        background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 22px;
+        transition: transform .14s, border-color .14s;
+      }
+      .card:hover { transform: translateY(-3px); border-color: #34344a; }
+      .card .ic { width: 38px; height: 38px; border-radius: 10px; background: var(--bg-elev); display: grid; place-items: center; color: var(--accent); margin-bottom: 14px; }
+      .card h3 { font-size: 16px; margin-bottom: 6px; }
+      .card p { color: var(--dim); font-size: 14px; }
+
+      .install { padding: 30px 0 80px; }
+      .install .panel {
+        background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 26px 28px;
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px;
+      }
+      .install h4 { font-size: 14px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+      .install p { color: var(--dim); font-size: 13px; }
+      .install code {
+        font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px;
+        background: var(--bg-elev); border: 1px solid var(--border); border-radius: 7px;
+        padding: 2px 7px; color: var(--text); display: inline-block; margin-top: 6px;
+      }
+
+      footer { border-top: 1px solid var(--border); padding: 28px 0; color: var(--faint); font-size: 13px; }
+      footer .wrap { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+
+      @media (max-width: 760px) {
+        .shot .body { grid-template-columns: 40px 1fr; }
+        .shot .c3, .shot .c4 { display: none; }
+        .install .panel { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="brand">
+          <span class="mark"><svg viewBox="0 0 24 24"><path fill="#fff" d="M12 4l7 8-7 8-7-8z" /></svg></span>
+          Anode
+        </div>
+        <nav>
+          <a href="#features">Features</a>
+          <a href="#install">Install</a>
+          <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+        </nav>
+      </header>
+    </div>
+
+    <main>
+      <div class="wrap">
+        <section class="hero">
+          <span class="pill"><span class="dot"></span> v1.2.2 — now with account sync</span>
+          <h1>A <span class="accent">simple, clean,</span><br />efficient editor.</h1>
+          <p>Anode is a Claude-native desktop code editor — built from scratch, not on VS Code. Fast, beautiful, and yours.</p>
+          <div class="cta">
+            <a class="btn primary" href="/anode/Anode.exe">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg>
+              Download for Windows
+            </a>
+            <a class="btn ghost" href="#install">macOS &amp; Linux</a>
+          </div>
+          <div class="sub">Free &amp; open source · Windows 10/11 · ~5&nbsp;MB installer</div>
+
+          <div class="shot">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <div class="body">
+              <div class="col c1"></div>
+              <div class="col c2">
+                <div class="line s"></div><div class="line"></div><div class="line s"></div>
+                <div class="line"></div><div class="line s"></div>
+              </div>
+              <div class="col c3">
+                <div class="line a"></div><div class="line"></div><div class="line s"></div>
+                <div class="line"></div><div class="line s"></div><div class="line"></div>
+                <div class="line s"></div>
+              </div>
+              <div class="col c4">
+                <div class="line s"></div><div class="line"></div><div class="line a"></div>
+                <div class="line s"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="wrap">
+        <section class="features" id="features">
+          <h2>Everything you need, nothing you don't</h2>
+          <p class="lede">A focused editor with Claude Code wired into the core.</p>
+          <div class="grid">
+            <div class="card">
+              <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/></svg></div>
+              <h3>Claude Code built in</h3>
+              <p>The real <code style="padding:1px 5px">claude</code> CLI in a side panel — no API key, signed in like your terminal.</p>
+            </div>
+            <div class="card">
+              <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5V13a3 3 0 0 1-3 3H9"/></svg></div>
+              <h3>GitHub source control</h3>
+              <p>Commit, sync, branch and sign in to GitHub — a clean SCM panel that knows your repo's state.</p>
+            </div>
+            <div class="card">
+              <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.7-.8 1.7-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.1 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/></svg></div>
+              <h3>Themes &amp; palettes</h3>
+              <p>Built-in themes, a full color editor, and saved palettes — synced to your account.</p>
+            </div>
+            <div class="card">
+              <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg></div>
+              <h3>Terminal &amp; split editing</h3>
+              <p>An integrated shell, split panes, smooth-caret editor, and project switching with custom icons.</p>
+            </div>
+            <div class="card">
+              <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12a9 9 0 1 1-6.2-8.5"/><path d="M21 4v5h-5"/></svg></div>
+              <h3>Account sync</h3>
+              <p>Sign in and your settings, palettes and fonts follow you to every machine.</p>
+            </div>
+            <div class="card">
+              <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg></div>
+              <h3>Tiny &amp; fast</h3>
+              <p>Built on Tauri — a few megabytes, native blur, instant startup. Not another Chromium.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="install" id="install">
+          <div class="panel">
+            <div>
+              <h4>🪟 Windows</h4>
+              <p>Download and run the installer. On the SmartScreen prompt choose <em>More info → Run anyway</em>.</p>
+              <code>Anode.exe</code>
+            </div>
+            <div>
+              <h4>🍎 macOS</h4>
+              <p>Build from source, then right-click → Open (unsigned). Or:</p>
+              <code>xattr -cr /Applications/Anode.app</code>
+            </div>
+            <div>
+              <h4>🐧 Linux</h4>
+              <p>Grab the AppImage and run it:</p>
+              <code>chmod +x Anode.AppImage</code>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>© 2026 Gheat · Anode</span>
+        <span>A Simple, Clean, Efficient Editor.</span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -2435,6 +2435,86 @@ input[type="range"] {
   }
 }
 
+/* ---- Account sync ------------------------------------------------------- */
+.acct {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.acct-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-panel);
+  border-radius: 9px;
+  padding: 3px;
+}
+.acct-tabs button {
+  flex: 1;
+  padding: 7px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--text-dim);
+  transition: background 0.14s, color 0.14s;
+}
+.acct-tabs button.active {
+  background: var(--bg-active);
+  color: var(--text);
+}
+.acct input {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text);
+  padding: 9px 11px;
+  font-family: var(--app-font);
+  font-size: 13px;
+  outline: none;
+}
+.acct input:focus {
+  border-color: var(--accent);
+}
+.acct .done {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.acct .done.full {
+  width: 100%;
+  justify-content: center;
+}
+.acct-id {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.acct-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000));
+}
+.acct-email {
+  font-size: 13px;
+  font-weight: 600;
+}
+.acct-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.acct-status {
+  font-size: 12px;
+  color: var(--success);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

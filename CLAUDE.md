@@ -600,9 +600,37 @@ matching `@codemirror/lang-*` dependency.
   `cwd`-bound).
 - **GitHub sign-in needs network** and the baked-in client ID; push/pull also
   work via the system credential manager without signing in.
-- **Settings "account sync"** currently exports/imports the JSON blob to the
-  clipboard — there is no backend yet (the SetupWizard's "Anode account" step is
-  a placeholder).
 - The persisted store can hold stale shape after big refactors — bump
   `version` and extend `migrate` when removing/renaming top-level fields.
+
+---
+
+## 20. Sync server (`server/`)
+
+A separate, self-hosted backend (its own Cargo project — **not** part of the
+Tauri workspace) for accounts + settings sync, plus the `gheat.net/anode`
+landing page.
+
+- **Stack:** Rust + **axum** + **SQLite** (`rusqlite`, bundled). Argon2id
+  password hashing; random session tokens stored as SHA-256 hashes.
+- **`server/src/main.rs`** — the whole API:
+  `POST /api/auth/signup|login|logout`, `GET /api/me`,
+  `GET|PUT /api/settings` (the settings blob), `GET /api/health`. Auth via
+  `Authorization: Bearer <token>`. CORS permissive (safe: header token, not
+  cookies). Config: `ANODE_BIND` (default `127.0.0.1:8787`), `ANODE_DB`.
+- **`server/web/index.html`** — standalone landing page (Anode aesthetic;
+  download button points to `/anode/Anode.exe`).
+- **`server/Caddyfile`** — `gheat.net/anode` → static site, `gheat.net/anode/api/*`
+  → the server (strips only `/anode` so the server still sees `/api/...`).
+- **`server/anode-sync.service`** — systemd unit (runs as user `anode`,
+  `/srv/anode`). `server/README.md` has the full Arch deploy + Cloudflare TLS
+  guide.
+
+**Frontend client:** `src/lib/account.ts` (base URL `https://gheat.net/anode/api`,
+override with `VITE_ANODE_API`; token in `localStorage` key
+`anode-account-token`). UI: `src/components/AccountSync.tsx`, shown in
+**Settings → Account Sync**. Sign in/up, then **Sync to cloud** (PUT the settings
+blob) / **Restore from cloud** (GET + apply each key). First sign-in pulls cloud
+settings if present, else pushes local. The clipboard export/import remains as a
+no-account manual backup.
 ```

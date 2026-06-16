@@ -121,14 +121,12 @@ function StepSignIn() {
           <Icon name="sync" size={22} />
         </div>
         <div className="wiz-prov-body">
-          <div className="wiz-prov-title">
-            Anode account <span className="wiz-soon">soon</span>
+          <div className="wiz-prov-title">Anode account</div>
+          <div className="wiz-prov-sub">
+            Sync settings &amp; palettes — sign in from Settings → Account Sync.
           </div>
-          <div className="wiz-prov-sub">Sync settings &amp; palettes across devices.</div>
         </div>
-        <button className="wiz-mini" disabled>
-          Skip for now
-        </button>
+        <span className="wiz-soon">later</span>
       </div>
     </div>
   );

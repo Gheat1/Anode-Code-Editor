@@ -1,0 +1,15 @@
+# Anode — merge into your EXISTING `gheat.net:80 { ... }` block.
+#
+# Put the landing site files in /var/www/Gheat.net/anode/ (index.html + your
+# Anode.exe). Your existing catch-all `handle /*` (root /var/www/Gheat.net)
+# already serves them as static files, so the ONLY thing you need to add is the
+# API proxy below. Drop it in alongside your other handle blocks — Caddy sorts
+# handle directives by specificity, so /anode/api/* is matched before the /*
+# fallback automatically (order in the file doesn't matter).
+
+    # ANODE SYNC API -> the anode-sync server on 127.0.0.1:8787
+    handle /anode/api/* {
+        uri strip_prefix /anode          # server routes are /api/..., not /anode/api/...
+        header Cache-Control "no-store"   # keep Cloudflare from caching API responses
+        reverse_proxy 127.0.0.1:8787
+    }
