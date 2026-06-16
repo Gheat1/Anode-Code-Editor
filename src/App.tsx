@@ -4,7 +4,6 @@ import { ActivityBar } from "./components/ActivityBar";
 import { Sidebar } from "./components/Sidebar";
 import { EditorArea } from "./components/EditorArea";
 import { useStore, syncAppearance } from "./state/store";
-import { setBlur } from "./lib/tauri";
 import { account } from "./lib/account";
 import { saveActiveFile, closeActiveTab } from "./lib/actions";
 
@@ -36,15 +35,6 @@ export default function App() {
   useEffect(() => {
     syncAppearance(settings);
   }, [settings]);
-
-  // Drive the native Windows acrylic from the toggle. Acrylic is Windows-only,
-  // so elsewhere we force solid surfaces (no see-through panels).
-  useEffect(() => {
-    const isWindows = navigator.userAgent.includes("Windows");
-    const blurOn = isWindows && settings.blurEnabled;
-    document.body.classList.toggle("no-blur", !blurOn);
-    if (isWindows) setBlur(settings.blurEnabled).catch(() => {});
-  }, [settings.blurEnabled]);
 
   // Masked project switch: the overlay is already painted (switching=true), so
   // defer the heavy remount to the next frame, then reveal once it settles. The

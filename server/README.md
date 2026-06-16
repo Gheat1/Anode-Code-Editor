@@ -62,7 +62,7 @@ sudo chown -R anode:anode /srv/anode
 sudo mkdir -p /var/www/Gheat.net/anode
 sudo cp web/index.html /var/www/Gheat.net/anode/
 # drop your Windows build here so the download button works:
-sudo cp /path/to/Anode_1.3.2_x64-setup.exe /var/www/Gheat.net/anode/Anode.exe
+sudo cp /path/to/Anode_1.3.3_x64-setup.exe /var/www/Gheat.net/anode/Anode.exe
 
 # 3. service
 sudo cp anode-sync.service /etc/systemd/system/

@@ -12,13 +12,13 @@
   --activitybar-w: 56px;
   --radius: 10px;
 
-  /* Panel surfaces. With blur ON they're slightly translucent so the acrylic
-     shows through; with blur OFF (body.no-blur) they become the exact palette
-     color — so pitch black renders pitch black, not grey. */
-  --surface: color-mix(in srgb, var(--bg) 85%, transparent);
-  --surface-panel: color-mix(in srgb, var(--bg-panel) 85%, transparent);
-  --surface-bar: color-mix(in srgb, var(--bg-elev) 86%, transparent);
-  --surface-tab: color-mix(in srgb, var(--bg-elev) 86%, transparent);
+  /* Solid, opaque panel surfaces. The window is opaque (no transparency/acrylic)
+     so the compositor never has to re-blend translucent layers — this is the
+     single biggest thing keeping the app fast in a webview. */
+  --surface: var(--bg);
+  --surface-panel: var(--bg-panel);
+  --surface-bar: var(--bg-elev);
+  --surface-tab: var(--bg-elev);
 }
 
 * {
@@ -39,21 +39,9 @@ body {
   font-family: var(--app-font);
   font-size: var(--app-font-size);
   color: var(--text);
-  /* Transparent so the Windows acrylic blur shows through. The panels paint
-     their own translucent surfaces on top. */
-  background: transparent;
+  background: var(--bg); /* opaque */
   -webkit-font-smoothing: antialiased;
   user-select: none;
-}
-
-/* When blur is off, the window and every panel use solid, exact palette colors
-   (no acrylic bleed-through), so picked colors render precisely. */
-body.no-blur {
-  background: var(--bg);
-  --surface: var(--bg);
-  --surface-panel: var(--bg-panel);
-  --surface-bar: var(--bg-elev);
-  --surface-tab: var(--bg-elev);
 }
 
 button {
@@ -84,11 +72,10 @@ button {
   display: grid;
   grid-template-rows: var(--titlebar-h) 1fr;
   height: 100vh;
-  /* Rounded app shell. The native window is also rounded (DWM on Win11) so the
-     acrylic backdrop is clipped to match. */
-  border-radius: 10px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: var(--bg);
+  /* Corners are rounded by DWM on the opaque window (round_corners in Rust),
+     so no CSS radius/transparency is needed here. */
 }
 
 /* Icons must never squish when their row runs out of room. */
@@ -519,11 +506,15 @@ svg {
   width: 2px;
   background: var(--caret);
   border-radius: 2px;
-  box-shadow: 0 0 8px var(--caret);
+  /* GPU-only transition (no blurred glow to repaint while it moves). */
   transition: transform 0.08s cubic-bezier(0.22, 1, 0.36, 1),
     height 0.08s ease;
+  will-change: transform;
   pointer-events: none;
   z-index: 5;
+}
+.smooth-caret.no-anim {
+  transition: none;
 }
 .smooth-caret.blink {
   animation: caret-blink 1.1s steps(1) infinite;
@@ -1221,24 +1212,21 @@ svg {
   color: var(--text);
 }
 
-/* ---- Depth: soft shadows between panels --------------------------------- */
+/* ---- Panel stacking (borders provide separation; no soft shadows in the
+   hot path — they add paint layers that cost on every repaint) ------------- */
 .titlebar {
   position: relative;
   z-index: 10;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
 }
 .activitybar {
   position: relative;
   z-index: 6;
-  box-shadow: 3px 0 12px rgba(0, 0, 0, 0.18);
 }
 .sidebar {
   z-index: 5;
-  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.16);
 }
 .claude {
   z-index: 5;
-  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.16);
 }
 .editor-area {
   position: relative;
@@ -1247,7 +1235,6 @@ svg {
 .tabs {
   position: relative;
   z-index: 2;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
 }
 
 /* ---- Flex layout for the workspace columns ------------------------------ */
@@ -1343,7 +1330,6 @@ svg {
   min-height: 0;
   border-top: 1px solid var(--border);
   background: var(--surface);
-  box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.14);
 }
 .term-head {
   display: flex;

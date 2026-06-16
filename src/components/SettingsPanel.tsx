@@ -273,13 +273,6 @@ export function SettingsPanel() {
                   )}
                 </div>
 
-                <div className="group">
-                  <label>Window</label>
-                  <div className="row">
-                    <label>Blurred background (Windows acrylic)</label>
-                    <Toggle on={settings.blurEnabled} onChange={(v) => set("blurEnabled", v)} />
-                  </div>
-                </div>
               </>
             )}
 

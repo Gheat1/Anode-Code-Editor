@@ -37,24 +37,13 @@ fn round_corners(window: &tauri::WebviewWindow) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Window blur (Windows acrylic / mica). Toggled from the settings panel.
-// ---------------------------------------------------------------------------
+// Acrylic blur is intentionally disabled: a transparent window with a live
+// acrylic backdrop forces the compositor to re-blend every translucent layer on
+// every repaint, which made the whole app laggy in the webview. The window is
+// opaque now. Kept as a no-op so the frontend call stays valid.
 #[tauri::command]
 fn set_blur(window: Window, enabled: bool) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        use window_vibrancy::{apply_acrylic, clear_acrylic};
-        if enabled {
-            apply_acrylic(&window, Some((18, 18, 22, 125))).map_err(|e| e.to_string())?;
-        } else {
-            clear_acrylic(&window).map_err(|e| e.to_string())?;
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (&window, enabled);
-    }
+    let _ = (&window, enabled);
     Ok(())
 }
 
@@ -664,12 +653,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyManager::default())
         .setup(|app| {
-            // Apply acrylic on launch so the blurred background is on by default.
+            // Opaque window, just rounded corners via DWM — no acrylic (it forces
+            // expensive per-frame recompositing in the webview).
             #[cfg(target_os = "windows")]
             {
-                use window_vibrancy::apply_acrylic;
                 if let Some(win) = app.get_webview_window("main") {
-                    let _ = apply_acrylic(&win, Some((18, 18, 22, 125)));
                     round_corners(&win);
                 }
             }

@@ -13,7 +13,7 @@ need; everything here reflects the current state of the repo.
 code editor for Windows, macOS, and Linux, built **from scratch (not on VS
 Code)**.
 
-- **Version:** 1.3.2 · **Author/Publisher:** Gheat · **Copyright:** © 2026 Gheat
+- **Version:** 1.3.3 · **Author/Publisher:** Gheat · **Copyright:** © 2026 Gheat
 - **Bundle identifier:** `com.anode.editor`
 - **Primary platform:** Windows (acrylic blur, DWM rounded corners). macOS/Linux
   are fully supported with graceful fallbacks.
@@ -516,7 +516,7 @@ project's pathless state has nothing to write.
 
 ## 16. Build & release
 
-`tauri.conf.json` holds `version` (currently `1.3.2`), `productName` ("Anode"),
+`tauri.conf.json` holds `version` (currently `1.3.3`), `productName` ("Anode"),
 `identifier`, the frameless/transparent/centered window, and bundle metadata
 (`targets: "all"`, `publisher`/`copyright`, icon list incl. `.icns`/`.ico`).
 Bump the version in **all three**: `tauri.conf.json`, `package.json`,

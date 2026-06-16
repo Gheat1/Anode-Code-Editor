@@ -42,7 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fontFamily: "'Inter', system-ui, sans-serif",
   fontSize: 14,
   editorFontFamily: "'JetBrains Mono', 'Cascadia Code', monospace",
-  blurEnabled: true,
+  blurEnabled: false, // acrylic removed for performance (window is opaque)
   smoothCaret: true,
   lineNumbers: true,
   showClaudeFolder: false,
