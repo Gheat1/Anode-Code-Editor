@@ -132,6 +132,25 @@ export const claudeUsage = (cwd: string) =>
 export const claudeLimits = (cwd: string) =>
   inTauri ? invoke<string>("claude_limits", { cwd }) : Promise.resolve("");
 
+// ---- Project stats -------------------------------------------------------
+// Files / lines-of-code / size for the open folder, broken down by language
+// (mirrors the Rust ProjectStats struct). Powers the Project Info dialog.
+export interface LangStat {
+  name: string;
+  files: number;
+  lines: number;
+}
+export interface ProjectStats {
+  files: number;
+  lines: number;
+  bytes: number;
+  dirs: number;
+  languages: LangStat[];
+}
+
+export const projectStats = (path: string) =>
+  invoke<ProjectStats>("project_stats", { path });
+
 // ---- Window --------------------------------------------------------------
 export const setBlur = (enabled: boolean) =>
   inTauri ? invoke<void>("set_blur", { enabled }) : Promise.resolve();

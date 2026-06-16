@@ -22,6 +22,11 @@ const SetupWizard = lazy(() =>
 const AboutModal = lazy(() =>
   import("./components/AboutModal").then((m) => ({ default: m.AboutModal }))
 );
+const ProjectInfoModal = lazy(() =>
+  import("./components/ProjectInfoModal").then((m) => ({
+    default: m.ProjectInfoModal,
+  }))
+);
 
 export default function App() {
   const settings = useStore((s) => s.settings);
@@ -29,6 +34,7 @@ export default function App() {
   const showSidebar = useStore((s) => s.showSidebar);
   const showSettings = useStore((s) => s.showSettings);
   const showAbout = useStore((s) => s.showAbout);
+  const showProjectInfo = useStore((s) => s.showProjectInfo);
   const welcomeDismissed = useStore((s) => s.welcomeDismissed);
   const switching = useStore((s) => s.switching);
   const pendingProjectId = useStore((s) => s.pendingProjectId);
@@ -174,6 +180,11 @@ export default function App() {
       {showAbout && (
         <Suspense fallback={null}>
           <AboutModal onClose={() => toggle("showAbout")} />
+        </Suspense>
+      )}
+      {showProjectInfo && (
+        <Suspense fallback={null}>
+          <ProjectInfoModal onClose={() => toggle("showProjectInfo")} />
         </Suspense>
       )}
 

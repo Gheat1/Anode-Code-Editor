@@ -891,6 +891,156 @@ async fn claude_limits(cwd: String) -> Result<String, String> {
     .await
 }
 
+// ---------------------------------------------------------------------------
+// Project stats — walk the open folder and total files / lines of code / size,
+// broken down by language. Reuses the same dir-pruning as the explorer so we
+// don't descend into node_modules/target/.git/build output (which would both
+// be slow and drown the real source in dependency lines).
+// ---------------------------------------------------------------------------
+#[derive(Serialize)]
+struct LangStat {
+    name: String,
+    files: u64,
+    lines: u64,
+}
+
+#[derive(Serialize, Default)]
+struct ProjectStats {
+    files: u64,
+    lines: u64,
+    bytes: u64,
+    dirs: u64,
+    languages: Vec<LangStat>,
+}
+
+// Map a file extension to a human language name. "Other" collects the rest so
+// the breakdown stays focused on real source languages.
+fn lang_for_ext(ext: &str) -> &'static str {
+    match ext {
+        "ts" => "TypeScript",
+        "tsx" => "TSX",
+        "js" | "mjs" | "cjs" => "JavaScript",
+        "jsx" => "JSX",
+        "rs" => "Rust",
+        "py" => "Python",
+        "go" => "Go",
+        "java" => "Java",
+        "c" | "h" => "C",
+        "cpp" | "cc" | "cxx" | "hpp" | "hh" => "C++",
+        "cs" => "C#",
+        "rb" => "Ruby",
+        "php" => "PHP",
+        "swift" => "Swift",
+        "kt" | "kts" => "Kotlin",
+        "css" => "CSS",
+        "scss" | "sass" | "less" => "Sass/Less",
+        "html" | "htm" => "HTML",
+        "vue" | "svelte" => "Components",
+        "json" => "JSON",
+        "md" | "markdown" => "Markdown",
+        "yml" | "yaml" => "YAML",
+        "toml" => "TOML",
+        "sh" | "bash" | "zsh" => "Shell",
+        "sql" => "SQL",
+        "xml" => "XML",
+        _ => "Other",
+    }
+}
+
+// Count text lines: number of '\n' plus one for a final unterminated line.
+fn count_lines(bytes: &[u8]) -> u64 {
+    if bytes.is_empty() {
+        return 0;
+    }
+    let nl = bytes.iter().filter(|&&b| b == b'\n').count() as u64;
+    if *bytes.last().unwrap() == b'\n' {
+        nl
+    } else {
+        nl + 1
+    }
+}
+
+#[tauri::command]
+async fn project_stats(path: String) -> Result<ProjectStats, String> {
+    run_blocking(move || {
+        if path.is_empty() {
+            return Err("No folder is open for this project.".into());
+        }
+        let mut stats = ProjectStats::default();
+        // (files, lines) accumulated per language name.
+        let mut by_lang: HashMap<&'static str, (u64, u64)> = HashMap::new();
+
+        // Iterative walk with an explicit stack so we can prune heavy dirs
+        // without descending into them.
+        let mut stack = vec![std::path::PathBuf::from(&path)];
+        while let Some(dir) = stack.pop() {
+            let rd = match std::fs::read_dir(&dir) {
+                Ok(r) => r,
+                Err(_) => continue, // unreadable dir (perms, races) — skip it
+            };
+            for entry in rd.flatten() {
+                let p = entry.path();
+                let ft = match entry.file_type() {
+                    Ok(ft) => ft,
+                    Err(_) => continue,
+                };
+                if ft.is_dir() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if matches!(
+                        name.as_str(),
+                        "node_modules" | "target" | ".git" | "dist" | "build" | ".next"
+                    ) {
+                        continue;
+                    }
+                    stats.dirs += 1;
+                    stack.push(p);
+                } else if ft.is_file() {
+                    let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    stats.files += 1;
+                    stats.bytes += size;
+
+                    let ext = p
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    let lang = lang_for_ext(&ext);
+
+                    // Only count lines for reasonably-sized text files. Anything
+                    // with a NUL byte near the start is treated as binary.
+                    let mut lines = 0u64;
+                    if size <= 2_000_000 {
+                        if let Ok(bytes) = std::fs::read(&p) {
+                            let head = &bytes[..bytes.len().min(8000)];
+                            if !head.contains(&0) {
+                                lines = count_lines(&bytes);
+                                stats.lines += lines;
+                            }
+                        }
+                    }
+                    let e = by_lang.entry(lang).or_insert((0, 0));
+                    e.0 += 1;
+                    e.1 += lines;
+                }
+            }
+        }
+
+        let mut languages: Vec<LangStat> = by_lang
+            .into_iter()
+            .map(|(name, (files, lines))| LangStat {
+                name: name.to_string(),
+                files,
+                lines,
+            })
+            .collect();
+        // Most-significant language first (by lines, then file count).
+        languages.sort_by(|a, b| b.lines.cmp(&a.lines).then(b.files.cmp(&a.files)));
+        stats.languages = languages;
+        Ok(stats)
+    })
+    .await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -933,7 +1083,8 @@ pub fn run() {
             pty_resize,
             pty_kill,
             claude_usage,
-            claude_limits
+            claude_limits,
+            project_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anode");

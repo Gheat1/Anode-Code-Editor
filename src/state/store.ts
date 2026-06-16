@@ -175,6 +175,7 @@ interface AppState {
   showSidebar: boolean;
   showTerminal: boolean;
   showAbout: boolean;
+  showProjectInfo: boolean; // Project Info dialog (files / lines of code / size)
   terminalRestart: number; // bump to start a fresh shell in the active project
   // Live status of the active project's Claude session, surfaced so the activity
   // bar can show a running/busy indicator even when the panel is closed.
@@ -225,6 +226,7 @@ interface AppState {
       | "showSidebar"
       | "showTerminal"
       | "showAbout"
+      | "showProjectInfo"
       | "splitView"
   ) => void;
 }
@@ -245,6 +247,7 @@ export const useStore = create<AppState>()(
       showSidebar: true,
       showTerminal: false,
       showAbout: false,
+      showProjectInfo: false,
       terminalRestart: 0,
       claudeRunning: false,
       claudeBusy: false,
@@ -449,8 +452,9 @@ export const useStore = create<AppState>()(
           // Never restore a mid-switch overlay state from disk.
           switching: false,
           pendingProjectId: null,
-          // Transient modal — don't reopen the About dialog on launch.
+          // Transient modals — don't reopen these dialogs on launch.
           showAbout: false,
+          showProjectInfo: false,
           // Re-validated against the token at startup (App), so start blank.
           accountEmail: null,
         };

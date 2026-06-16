@@ -49,6 +49,7 @@ export function BrandMenu() {
         { label: "Open Folder…", run: openFolderAsProject },
         { label: "Save", shortcut: "Ctrl+S", run: saveActiveFile },
         { label: "Close Tab", shortcut: "Ctrl+W", run: closeActiveTab },
+        { label: "Project Info…", run: () => toggle("showProjectInfo") },
         { label: "Settings", shortcut: "Ctrl+,", run: () => toggle("showSettings") },
       ],
     },
