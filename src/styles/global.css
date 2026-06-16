@@ -7,6 +7,8 @@
   --app-font: "Inter", system-ui, sans-serif;
   --editor-font: "JetBrains Mono", "Cascadia Code", monospace;
   --app-font-size: 14px;
+  --editor-font-size: 13.5px;
+  --editor-line-height: 1.7;
   --titlebar-h: 36px;
   --statusbar-h: 24px;
   --activitybar-w: 56px;
@@ -125,14 +127,59 @@ svg {
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
 }
-.titlebar .brand {
+/* Brand dropdown — the single app menu, opened from the ◆ Anode button. */
+.brand-menu {
+  position: relative;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+.brand-menu .brand {
   font-weight: 600;
   letter-spacing: 0.04em;
   font-size: 13px;
-  flex-shrink: 0;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  transition: background 0.14s;
 }
-.titlebar .brand .mark {
+.brand-menu .brand:hover,
+.brand-menu .brand.active {
+  background: var(--bg-hover);
+}
+.brand-menu .brand .mark {
   color: var(--accent);
+}
+.brand-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 250px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  padding: 6px;
+  z-index: 60;
+  animation: pop-in 0.12s ease;
+}
+.brand-group {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+.brand-group:last-child {
+  border-bottom: none;
+}
+.brand-group-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  padding: 4px 10px 2px;
 }
 .titlebar .spacer {
   flex: 1 1 0;
@@ -201,10 +248,11 @@ svg {
 .titlebar .win-btns button {
   width: 38px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   color: var(--text-dim);
+  transition: background 0.15s, color 0.15s;
 }
 .titlebar .win-btns button:hover {
   background: var(--bg-hover);
@@ -264,6 +312,7 @@ svg {
   gap: 8px;
 }
 .activitybar .tool-btn {
+  position: relative;
   width: 40px;
   height: 40px;
   border-radius: 10px;
@@ -279,6 +328,21 @@ svg {
   color: var(--accent);
   background: var(--accent-soft);
 }
+/* Running indicator on the Claude button (shown even when the panel is closed). */
+.activitybar .tool-btn .run-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 2px var(--surface-bar);
+}
+.activitybar .tool-btn .run-dot.busy {
+  background: var(--warning);
+  animation: pulse 1.3s ease-in-out infinite;
+}
 
 /* ---- Sidebar (file tree) ------------------------------------------------ */
 .sidebar {
@@ -288,6 +352,27 @@ svg {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+/* Combined mode: Explorer and Source Control share the panel, stacked, each in
+   its own scroll region so neither starves the other. */
+.sidebar-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-region {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.sidebar-region.explorer {
+  flex: 1 1 55%;
+}
+.sidebar-region.scm {
+  flex: 1 1 45%;
+  border-top: 1px solid var(--border);
 }
 .tree-hint {
   padding: 8px 14px;
@@ -334,7 +419,14 @@ svg {
   color: var(--text-dim);
   font-size: 13px;
   cursor: pointer;
+  min-width: 0;
+}
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  flex: 1;
 }
 .tree-row:hover {
   background: var(--bg-hover);
@@ -389,6 +481,8 @@ svg {
   color: var(--text-faint);
   border-left: 1px solid var(--border);
   transition: background 0.14s, color 0.14s;
+  border-radius: 6px;
+  margin: 6px 4px;
 }
 .tab-action:hover {
   background: var(--bg-hover);
@@ -405,11 +499,12 @@ svg {
   padding: 0 12px;
   font-size: 13px;
   color: var(--text-dim);
-  border-right: 1px solid var(--border);
   cursor: pointer;
   white-space: nowrap;
   min-width: 0;
   max-width: 200px;
+  border-radius: 8px 8px 0 0;
+  margin: 0 2px;
 }
 .tab .dot,
 .tab .close {
@@ -480,12 +575,12 @@ svg {
 .cm-editor {
   height: 100%;
   font-family: var(--editor-font);
-  font-size: 13.5px;
+  font-size: var(--editor-font-size);
   background: transparent;
 }
 .cm-editor .cm-scroller {
   font-family: var(--editor-font);
-  line-height: 1.7;
+  line-height: var(--editor-line-height);
 }
 .cm-editor .cm-gutters {
   background: transparent;
@@ -808,6 +903,141 @@ svg {
   cursor: default;
 }
 
+/* ---- Claude panel: terminal body + usage meter -------------------------- */
+/* .cl-body holds the live terminal; the usage meter is a footer below it. */
+.cl-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+/* Usage meter — a clear footer strip with token + cost totals. */
+.cl-usage {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-family: var(--editor-font);
+}
+.cl-usage-seg {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+.cl-usage-label {
+  color: var(--text-faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.cl-usage-grow { flex: 1; }
+.cl-usage-model {
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 11px;
+}
+.cl-usage-empty {
+  justify-content: center;
+  color: var(--text-faint);
+}
+
+/* Detailed usage breakdown (Settings → Claude Code → Usage) */
+.cl-usage-detail {
+  display: flex;
+  flex-direction: column;
+}
+.cl-usage-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.cl-usage-detail-row:last-child { border-bottom: none; }
+.cl-usage-detail-k { color: var(--text-dim); }
+.cl-usage-detail-v {
+  color: var(--text);
+  font-family: var(--editor-font);
+  font-size: 12.5px;
+}
+.cl-usage-refresh {
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cl-usage-refresh:hover { background: var(--bg-hover); color: var(--text); }
+
+/* Real usage-limit bars (from `claude -p /usage`) */
+.cl-usage-wrap {
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.cl-usage-wrap .cl-usage {
+  border-top: none;
+  background: transparent;
+}
+.cl-limits {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 11px 12px;
+}
+.cl-limits + .cl-usage { border-top: 1px solid var(--border); }
+.cl-limit-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+.cl-limit-label { font-size: 11.5px; color: var(--text-dim); }
+.cl-limit-pct {
+  font-size: 11.5px;
+  font-family: var(--editor-font);
+  color: var(--text);
+}
+.cl-limit-track {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.cl-limit-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+.cl-limit-fill.warn { background: var(--warning); }
+.cl-limit-fill.danger { background: var(--danger); }
+.cl-limit-reset {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+/* In Settings the bars sit inside a group, so drop the panel padding/bg. */
+.cl-limits-detail { padding: 4px 0 10px; }
+
+/* Header chat/terminal toggle + busy status dot */
+.cl-tool.on { color: var(--accent); }
+.cl-status.busy .cl-dot { background: var(--warning); }
+
 /* ---- Status bar --------------------------------------------------------- */
 .statusbar {
   display: flex;
@@ -980,6 +1210,26 @@ svg {
   padding: 9px 18px;
   font-size: 13px;
 }
+/* Small icon-only "reset section" button that sits next to Done. */
+.sc-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.reset-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.reset-icon:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
 
 /* ---- Full custom-palette editor ----------------------------------------- */
 .palette-grid {
@@ -1004,6 +1254,124 @@ svg {
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
+}
+
+/* ---- Context menu (single app-wide right-click menu) -------------------- */
+.context-menu {
+  position: fixed;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  min-width: 168px;
+  padding: 5px;
+  overflow: hidden;
+  animation: pop-in 0.1s ease;
+}
+.context-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text);
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+.context-menu-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.context-menu-item:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+.context-menu-item.danger {
+  color: var(--danger);
+}
+.context-menu-item.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+.context-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 5px 4px;
+}
+
+/* ---- Inline color swatch (CodeMirror) ----------------------------------- */
+.cm-color-swatch {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-right: 0.35em;
+  vertical-align: -0.08em;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25) inset;
+  transition: transform 0.1s;
+}
+.cm-color-swatch:hover {
+  transform: scale(1.18);
+}
+
+/* ---- About dialog ------------------------------------------------------- */
+.about {
+  width: 380px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  padding: 32px 28px 24px;
+  text-align: center;
+  animation: scale-in 0.16s ease;
+}
+.about-mark {
+  font-size: 40px;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 10px;
+}
+.about h2 {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+.about-tagline {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.about-version {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-family: var(--editor-font);
+  margin-top: 6px;
+}
+.about-desc {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 18px 0;
+  text-align: left;
+}
+.about-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-bottom: 20px;
+}
+.about-link {
+  color: var(--accent);
+  font-size: 12px;
+}
+.about-link:hover {
+  text-decoration: underline;
 }
 
 /* ---- Activity-bar divider ----------------------------------------------- */
@@ -1665,6 +2033,13 @@ input[type="range"] {
   opacity: 0.5;
   cursor: default;
 }
+.ip-btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+.ip-btn.danger:hover {
+  background: color-mix(in srgb, var(--danger) 85%, #000);
+}
 .ip-soon {
   margin-top: 10px;
   text-align: center;
@@ -2086,6 +2461,71 @@ input[type="range"] {
 .row select:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* ---- Credits section ---------------------------------------------------- */
+.credits-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 0 18px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.credits-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.credits-name {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.credits-tag {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+.credits-ver {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 5px;
+  font-family: var(--editor-font);
+}
+.credits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.credits-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  transition: background 0.14s;
+}
+.credits-item:hover {
+  background: var(--bg-hover);
+}
+.credits-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+  min-width: 120px;
+}
+.credits-item-note {
+  font-size: 12px;
+  color: var(--text-dim);
 }
 
 /* Dangerous-mode pill in the Claude header */
@@ -2608,4 +3048,23 @@ a:focus-visible {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---- Rounded-panel mode (Settings → Appearance → Rounded corners) -------- */
+/* Insets the workspace and floats the main panels as rounded cards over the app
+   background, so they read as one cohesive, soft-edged set. Each panel keeps a
+   full border (the flush dividers become card edges) and the activity bar /
+   sidebar / editor / Claude all share the same radius. The editor card already
+   clips its contents (tabs + terminal), so its corners round cleanly. */
+body.rounded-ui .workspace {
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg);
+}
+body.rounded-ui .activitybar,
+body.rounded-ui .sidebar,
+body.rounded-ui .editor-area,
+body.rounded-ui .claude {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }

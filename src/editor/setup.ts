@@ -1,4 +1,4 @@
-import { Extension } from "@codemirror/state";
+import { Extension, EditorState } from "@codemirror/state";
 import {
   EditorView,
   lineNumbers,
@@ -15,6 +15,7 @@ import {
   bracketMatching,
   foldGutter,
   indentOnInput,
+  indentUnit,
   syntaxHighlighting,
   HighlightStyle,
 } from "@codemirror/language";
@@ -22,6 +23,7 @@ import { closeBrackets, autocompletion, closeBracketsKeymap } from "@codemirror/
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { lintKeymap, lintGutter } from "@codemirror/lint";
 import { tags as t } from "@lezer/highlight";
+import { inlineColorPicker } from "./colorPicker";
 
 import { javascript } from "@codemirror/lang-javascript";
 import { markdown } from "@codemirror/lang-markdown";
@@ -41,20 +43,41 @@ function cssVar(name: string, fallback: string): string {
   return v || fallback;
 }
 
+// A rich, multi-hue syntax palette so code reads with depth rather than as a
+// near-monochrome block. Headings/links follow the theme accent; the syntax
+// hues are fixed (One Dark-flavored) because they need to stay distinguishable
+// from each other across every theme. Tweak the SYN_* constants to retune.
+const SYN_PURPLE = "#c678dd"; // keywords, control flow
+const SYN_BLUE = "#61afef"; // functions, definitions
+const SYN_RED = "#e06c75"; // properties, attributes, html tags
+const SYN_ORANGE = "#d19a66"; // numbers, booleans, constants
+const SYN_YELLOW = "#e5c07b"; // types, classes
+const SYN_GREEN = "#98c379"; // strings
+const SYN_CYAN = "#56b6c2"; // operators, regexp, escapes
+
 export function anodeHighlight(): HighlightStyle {
   const accent = cssVar("--accent", "#7c8cff");
   const text = cssVar("--text", "#e6e6ee");
   const dim = cssVar("--text-dim", "#a0a0b0");
+  const faint = cssVar("--text-faint", "#6a6a78");
   return HighlightStyle.define([
-    { tag: t.keyword, color: accent, fontWeight: "600" },
+    { tag: [t.keyword, t.modifier, t.self, t.null], color: SYN_PURPLE, fontWeight: "600" },
+    { tag: [t.controlKeyword, t.moduleKeyword, t.operatorKeyword], color: SYN_PURPLE },
     { tag: [t.name, t.deleted, t.character, t.macroName], color: text },
-    { tag: [t.function(t.variableName), t.labelName], color: "#7fd1c8" },
-    { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: "#e5a36b" },
-    { tag: [t.definition(t.name), t.separator], color: text },
-    { tag: [t.typeName, t.className, t.number, t.changed], color: "#e5c07b" },
-    { tag: [t.operator, t.operatorKeyword], color: dim },
-    { tag: [t.string, t.inserted], color: "#98c379" },
-    { tag: [t.comment, t.lineComment, t.blockComment], color: dim, fontStyle: "italic" },
+    { tag: [t.variableName], color: text },
+    { tag: [t.propertyName, t.attributeName], color: SYN_RED },
+    { tag: [t.function(t.variableName), t.function(t.propertyName), t.labelName], color: SYN_BLUE },
+    { tag: [t.definition(t.variableName), t.definition(t.name)], color: SYN_BLUE },
+    { tag: [t.bool, t.atom, t.number, t.integer, t.float], color: SYN_ORANGE },
+    { tag: [t.constant(t.variableName), t.constant(t.name), t.standard(t.name)], color: SYN_ORANGE },
+    { tag: [t.typeName, t.className, t.namespace, t.changed], color: SYN_YELLOW },
+    { tag: [t.string, t.special(t.string), t.inserted], color: SYN_GREEN },
+    { tag: [t.regexp, t.escape], color: SYN_CYAN },
+    { tag: [t.operator], color: SYN_CYAN },
+    { tag: [t.tagName], color: SYN_RED },
+    { tag: [t.angleBracket, t.bracket, t.squareBracket, t.paren, t.brace, t.punctuation, t.separator], color: dim },
+    { tag: [t.meta, t.documentMeta, t.annotation], color: faint },
+    { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: faint, fontStyle: "italic" },
     { tag: t.invalid, color: "#ff6b6b" },
     { tag: [t.heading], color: accent, fontWeight: "700" },
     { tag: [t.link, t.url], color: accent, textDecoration: "underline" },
@@ -107,9 +130,20 @@ export function languageName(filename: string): string {
   return map[ext] ?? "Plain Text";
 }
 
+export interface EditorOpts {
+  lineNumbers: boolean;
+  tabSize: number;
+  wordWrap: boolean;
+  highlightActiveLine: boolean;
+  autoCloseBrackets: boolean;
+}
+
 // The shared set of editor behaviors: line numbers, fold + lint gutters,
 // history, bracketing, search, autocomplete, and our themed highlighting.
-export function baseExtensions(opts: { lineNumbers: boolean }): Extension[] {
+// Behaviors gated behind settings are toggled here so the editor rebuilds with
+// the user's choices (EditorPane keys its rebuild on these opts).
+export function baseExtensions(opts: EditorOpts): Extension[] {
+  const indent = " ".repeat(Math.max(1, opts.tabSize));
   return [
     opts.lineNumbers ? lineNumbers() : [],
     highlightActiveLineGutter(),
@@ -119,13 +153,16 @@ export function baseExtensions(opts: { lineNumbers: boolean }): Extension[] {
     drawSelection(),
     dropCursor(),
     indentOnInput(),
+    EditorState.tabSize.of(opts.tabSize),
+    indentUnit.of(indent),
     bracketMatching(),
-    closeBrackets(),
+    opts.autoCloseBrackets ? closeBrackets() : [],
     autocompletion(),
     rectangularSelection(),
     crosshairCursor(),
-    highlightActiveLine(),
+    opts.highlightActiveLine ? highlightActiveLine() : [],
     highlightSelectionMatches(),
+    inlineColorPicker,
     syntaxHighlighting(anodeHighlight()),
     keymap.of([
       ...closeBracketsKeymap,
@@ -135,6 +172,6 @@ export function baseExtensions(opts: { lineNumbers: boolean }): Extension[] {
       ...lintKeymap,
       indentWithTab,
     ]),
-    EditorView.lineWrapping,
+    opts.wordWrap ? EditorView.lineWrapping : [],
   ];
 }

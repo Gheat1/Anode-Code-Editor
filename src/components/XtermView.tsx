@@ -13,12 +13,16 @@ export function XtermView({
   args = null,
   cwd,
   onStatus,
+  onBuffer,
 }: {
   id: string;
   program: string | null;
   args?: string[] | null;
   cwd: string | null;
   onStatus?: (status: "running" | "exited") => void;
+  // Called (debounced) with the terminal's scraped buffer text, one entry per
+  // line, whenever output changes — used to mirror the session into the chat UI.
+  onBuffer?: (lines: string[]) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   // Read the latest args/onStatus at run time so they don't force a remount.
@@ -26,6 +30,8 @@ export function XtermView({
   argsRef.current = args;
   const onStatusRef = useRef(onStatus);
   onStatusRef.current = onStatus;
+  const onBufferRef = useRef(onBuffer);
+  onBufferRef.current = onBuffer;
 
   useEffect(() => {
     if (!hostRef.current || !inTauri) return;
@@ -34,7 +40,8 @@ export function XtermView({
     const term = new Terminal({
       allowTransparency: true,
       cursorBlink: true,
-      fontSize: 13,
+      fontSize: parseFloat(css.getPropertyValue("--editor-font-size")) || 13,
+      lineHeight: 1.15,
       fontFamily: css.getPropertyValue("--editor-font").trim() || "monospace",
       theme: {
         background: "rgba(0,0,0,0)",
@@ -69,10 +76,36 @@ export function XtermView({
       else unsubs.push(u);
     };
 
+    // Scrape the parsed buffer (plain text, one string per line) for the chat
+    // overlay. xterm already resolved every ANSI escape / cursor redraw, so we
+    // just read the resulting cells. Debounced so a burst of output coalesces
+    // into one parse. Hidden (warm) sessions still scrape — the buffer model
+    // updates regardless of whether the renderer is on screen.
+    let scrapeTimer: ReturnType<typeof setTimeout> | undefined;
+    const scrape = () => {
+      const cb = onBufferRef.current;
+      if (!cb || disposed) return;
+      const buf = term.buffer.active;
+      const lines: string[] = [];
+      for (let i = 0; i < buf.length; i++) {
+        const ln = buf.getLine(i);
+        lines.push(ln ? ln.translateToString(true) : "");
+      }
+      cb(lines);
+    };
+    const scheduleScrape = () => {
+      if (!onBufferRef.current) return;
+      if (scrapeTimer) clearTimeout(scrapeTimer);
+      scrapeTimer = setTimeout(scrape, 80);
+    };
+
     (async () => {
       track(
         await onPtyOutput((sid, chunk) => {
-          if (!disposed && sid === id) term.write(chunk);
+          if (!disposed && sid === id) {
+            term.write(chunk);
+            scheduleScrape();
+          }
         })
       );
       track(
@@ -112,6 +145,7 @@ export function XtermView({
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
+      if (scrapeTimer) clearTimeout(scrapeTimer);
       onData.dispose();
       ro.disconnect();
       unsubs.forEach((u) => u());

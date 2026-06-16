@@ -12,26 +12,28 @@ interface Item {
   label: string;
   shortcut?: string;
   run?: () => void;
-  separator?: boolean;
 }
 interface Menu {
   label: string;
   items: Item[];
 }
 
-export function MenuBar() {
-  const [open, setOpen] = useState<string | null>(null);
+// The app's single menu. Clicking the brand (◆ Anode) opens one dropdown that
+// groups File/Edit/View/Terminal/Help — replacing the old row of menu buttons
+// in the title bar. Closes on outside click / Escape.
+export function BrandMenu() {
+  const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const toggle = useStore((s) => s.toggle);
+  const newTerminal = useStore((s) => s.newTerminal);
   const setSidebarView = useStore((s) => s.setSidebarView);
 
-  // Close on outside click / Escape.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(null);
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    const onEsc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
+    const onEsc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onEsc);
     return () => {
@@ -47,7 +49,7 @@ export function MenuBar() {
         { label: "Open Folder…", run: openFolderAsProject },
         { label: "Save", shortcut: "Ctrl+S", run: saveActiveFile },
         { label: "Close Tab", shortcut: "Ctrl+W", run: closeActiveTab },
-        { label: "Settings", shortcut: "Ctrl+,", separator: true, run: () => toggle("showSettings") },
+        { label: "Settings", shortcut: "Ctrl+,", run: () => toggle("showSettings") },
       ],
     },
     {
@@ -55,7 +57,10 @@ export function MenuBar() {
       items: [
         { label: "Undo", shortcut: "Ctrl+Z", run: editor.undo },
         { label: "Redo", shortcut: "Ctrl+Y", run: editor.redo },
-        { label: "Find", shortcut: "Ctrl+F", separator: true, run: editor.find },
+        { label: "Cut", run: editor.cut },
+        { label: "Copy", run: editor.copy },
+        { label: "Paste", run: editor.paste },
+        { label: "Find", shortcut: "Ctrl+F", run: editor.find },
       ],
     },
     {
@@ -65,7 +70,7 @@ export function MenuBar() {
         { label: "Split Editor", shortcut: "Ctrl+\\", run: () => toggle("splitView") },
         { label: "Toggle Markdown Preview", run: () => toggle("showPreview") },
         { label: "Toggle Claude Code", shortcut: "Ctrl+J", run: () => toggle("showClaude") },
-        { label: "Explorer", separator: true, run: () => setSidebarView("explorer") },
+        { label: "Explorer", run: () => setSidebarView("explorer") },
         { label: "Source Control", run: () => setSidebarView("scm") },
       ],
     },
@@ -73,6 +78,7 @@ export function MenuBar() {
       label: "Terminal",
       items: [
         { label: "Toggle Terminal", shortcut: "Ctrl+`", run: () => toggle("showTerminal") },
+        { label: "New Terminal", run: newTerminal },
       ],
     },
     {
@@ -80,29 +86,31 @@ export function MenuBar() {
       items: [
         { label: "Claude Code docs", run: () => openUrl("https://docs.claude.com/claude-code") },
         { label: "Report an issue", run: () => openUrl("https://github.com/anthropics/claude-code/issues") },
+        { label: "About Anode", run: () => toggle("showAbout") },
       ],
     },
   ];
 
   return (
-    <div className="menubar" ref={ref}>
-      {menus.map((m) => (
-        <div key={m.label} className="menu">
-          <button
-            className={`menu-label ${open === m.label ? "active" : ""}`}
-            onClick={() => setOpen(open === m.label ? null : m.label)}
-            onMouseEnter={() => open && setOpen(m.label)}
-          >
-            {m.label}
-          </button>
-          {open === m.label && (
-            <div className="menu-pop">
+    <div className="brand-menu" ref={ref}>
+      <button
+        className={`brand ${open ? "active" : ""}`}
+        onClick={() => setOpen((o) => !o)}
+        title="Menu"
+      >
+        <span className="mark">◆</span> Anode
+      </button>
+      {open && (
+        <div className="brand-pop">
+          {menus.map((m) => (
+            <div key={m.label} className="brand-group">
+              <div className="brand-group-label">{m.label}</div>
               {m.items.map((it, i) => (
                 <button
                   key={i}
-                  className={`menu-item ${it.separator ? "sep" : ""}`}
+                  className="menu-item"
                   onClick={() => {
-                    setOpen(null);
+                    setOpen(false);
                     it.run?.();
                   }}
                 >
@@ -111,9 +119,9 @@ export function MenuBar() {
                 </button>
               ))}
             </div>
-          )}
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }

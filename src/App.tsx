@@ -3,9 +3,10 @@ import { TitleBar } from "./components/TitleBar";
 import { ActivityBar } from "./components/ActivityBar";
 import { Sidebar } from "./components/Sidebar";
 import { EditorArea } from "./components/EditorArea";
+import { useContextMenu } from "./components/ContextMenu";
 import { useStore, syncAppearance } from "./state/store";
 import { account } from "./lib/account";
-import { saveActiveFile, closeActiveTab } from "./lib/actions";
+import { saveActiveFile, closeActiveTab, editor } from "./lib/actions";
 
 // Heavy panels are code-split so the initial bundle (and webview parse) stays
 // small; their chunks (xterm, etc.) load only when first shown.
@@ -18,18 +19,33 @@ const SettingsPanel = lazy(() =>
 const SetupWizard = lazy(() =>
   import("./components/SetupWizard").then((m) => ({ default: m.SetupWizard }))
 );
+const AboutModal = lazy(() =>
+  import("./components/AboutModal").then((m) => ({ default: m.AboutModal }))
+);
 
 export default function App() {
   const settings = useStore((s) => s.settings);
   const showClaude = useStore((s) => s.showClaude);
   const showSidebar = useStore((s) => s.showSidebar);
   const showSettings = useStore((s) => s.showSettings);
+  const showAbout = useStore((s) => s.showAbout);
   const welcomeDismissed = useStore((s) => s.welcomeDismissed);
   const switching = useStore((s) => s.switching);
   const pendingProjectId = useStore((s) => s.pendingProjectId);
   const setActiveProject = useStore((s) => s.setActiveProject);
   const finishSwitch = useStore((s) => s.finishSwitch);
+  const toggle = useStore((s) => s.toggle);
+  const newTerminal = useStore((s) => s.newTerminal);
+  const openContextMenu = useContextMenu();
   const [showWelcome, setShowWelcome] = useState(!welcomeDismissed);
+
+  // Once Claude has been opened this session, keep its panel mounted (just
+  // hidden when closed) so the running session survives closing the tab. We
+  // don't auto-mount on a cold launch where it was left closed.
+  const [claudeMounted, setClaudeMounted] = useState(showClaude);
+  useEffect(() => {
+    if (showClaude) setClaudeMounted(true);
+  }, [showClaude]);
 
   // Apply theme + global font on any settings change.
   useEffect(() => {
@@ -113,14 +129,32 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Default right-click anywhere: editor clipboard ops + file/panel shortcuts.
+  // Components with their own items (e.g. folder rows) handle the event first
+  // and stopPropagation so this one doesn't also fire.
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    const hasSel = editor.hasSelection();
+    openContextMenu(e.clientX, e.clientY, [
+      { label: "Cut", run: editor.cut, disabled: !hasSel },
+      { label: "Copy", run: editor.copy, disabled: !hasSel },
+      { label: "Paste", run: editor.paste },
+      { label: "Save", separator: true, run: saveActiveFile },
+      { label: "Close Tab", run: closeActiveTab },
+      { label: "Find", run: editor.find },
+      { label: "New Terminal", separator: true, run: newTerminal },
+      { label: "Open Claude Code", run: () => useStore.setState({ showClaude: true }) },
+    ]);
+  }
+
   return (
-    <div className="app">
+    <div className="app" onContextMenu={handleContextMenu}>
       <TitleBar />
       <div className="workspace">
         <ActivityBar />
         {showSidebar && <Sidebar />}
         <EditorArea />
-        {showClaude && (
+        {claudeMounted && (
           <Suspense fallback={null}>
             <ClaudePanel />
           </Suspense>
@@ -135,6 +169,11 @@ export default function App() {
       {showWelcome && (
         <Suspense fallback={null}>
           <SetupWizard onClose={() => setShowWelcome(false)} />
+        </Suspense>
+      )}
+      {showAbout && (
+        <Suspense fallback={null}>
+          <AboutModal onClose={() => toggle("showAbout")} />
         </Suspense>
       )}
 

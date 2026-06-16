@@ -17,12 +17,15 @@ export function WarmTerminals({
   args = null,
   restartKey = 0,
   onActiveStatus,
+  onActiveBuffer,
 }: {
   idPrefix: string; // PTY id becomes `${idPrefix}:${projectId}`
   program: string | null;
   args?: string[] | null;
   restartKey?: number; // bump to restart the active project's session
   onActiveStatus?: (status: "running" | "exited") => void;
+  // The active project's scraped terminal buffer, for the chat overlay.
+  onActiveBuffer?: (lines: string[]) => void;
 }) {
   const projects = useStore((s) => s.projects);
   const activeProjectId = useStore((s) => s.activeProjectId);
@@ -46,6 +49,17 @@ export function WarmTerminals({
     const st = activeProjectId ? statuses[activeProjectId] : undefined;
     if (st) onActiveStatus?.(st);
   }, [activeProjectId, statuses, onActiveStatus]);
+
+  // Mirror each project's scraped buffer up to the panel for the active project.
+  // Hidden warm sessions keep scraping, so switching to a warm project shows its
+  // existing transcript instantly. Only tracked when a consumer is present (chat
+  // UI on), so the raw-terminal mode pays no scraping cost.
+  const [buffers, setBuffers] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    if (!onActiveBuffer) return;
+    const b = activeProjectId ? buffers[activeProjectId] : undefined;
+    if (b) onActiveBuffer(b);
+  }, [activeProjectId, buffers, onActiveBuffer]);
 
   // A restart (restartKey bump) must remount only the active project's view,
   // not disturb the warm ones. Track a per-project restart counter keyed into
@@ -89,6 +103,11 @@ export function WarmTerminals({
               cwd={project.path || null}
               onStatus={(st) =>
                 setStatuses((m) => (m[id] === st ? m : { ...m, [id]: st }))
+              }
+              onBuffer={
+                onActiveBuffer
+                  ? (lines) => setBuffers((m) => ({ ...m, [id]: lines }))
+                  : undefined
               }
             />
           </div>

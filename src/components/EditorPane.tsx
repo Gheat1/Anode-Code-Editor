@@ -19,6 +19,10 @@ export function EditorPane({ fileId }: { fileId?: string }) {
   const updateFileContent = useStore((s) => s.updateFileContent);
   const smoothCaretOn = useStore((s) => s.settings.smoothCaret);
   const lineNumbersOn = useStore((s) => s.settings.lineNumbers);
+  const tabSize = useStore((s) => s.settings.tabSize);
+  const wordWrap = useStore((s) => s.settings.wordWrap);
+  const highlightActiveLine = useStore((s) => s.settings.highlightActiveLine);
+  const autoCloseBrackets = useStore((s) => s.settings.autoCloseBrackets);
 
   const caretComp = useRef(new Compartment());
 
@@ -31,7 +35,13 @@ export function EditorPane({ fileId }: { fileId?: string }) {
     const state = EditorState.create({
       doc: file.content,
       extensions: [
-        baseExtensions({ lineNumbers: lineNumbersOn }),
+        baseExtensions({
+          lineNumbers: lineNumbersOn,
+          tabSize,
+          wordWrap,
+          highlightActiveLine,
+          autoCloseBrackets,
+        }),
         languageFor(file.name),
         ...(big ? [] : [demoLinter]),
         caretComp.current.of(smoothCaretOn ? smoothCaret : []),
@@ -54,7 +64,7 @@ export function EditorPane({ fileId }: { fileId?: string }) {
       viewRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, lineNumbersOn]);
+  }, [id, lineNumbersOn, tabSize, wordWrap, highlightActiveLine, autoCloseBrackets]);
 
   // Toggle the smooth caret live without rebuilding the editor.
   useEffect(() => {

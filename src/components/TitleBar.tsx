@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { FileLabel } from "./FileLabel";
-import { MenuBar } from "./MenuBar";
+import { BrandMenu } from "./MenuBar";
 import { useStore } from "../state/store";
 import { languageName } from "../editor/setup";
 import { saveActiveFile } from "../lib/actions";
-import { git, inTauri } from "../lib/tauri";
+import { inTauri } from "../lib/tauri";
 
 // Same rules as the demo linter, so the title-bar counts match the underlines.
 function countDiagnostics(text: string) {
@@ -23,21 +22,6 @@ function countDiagnostics(text: string) {
 // (VS-Code-like) status bar. The bar is draggable; buttons opt out.
 export function TitleBar() {
   const file = useStore((s) => s.openFiles.find((f) => f.id === s.activeFileId));
-  const project = useStore((s) =>
-    s.projects.find((p) => p.id === s.activeProjectId)
-  );
-  const [branch, setBranch] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!inTauri || !project?.path) {
-      setBranch(null);
-      return;
-    }
-    git
-      .status(project.path)
-      .then((s) => setBranch(s.branch))
-      .catch(() => setBranch(null));
-  }, [project?.path]);
 
   const { errors, warnings } = file
     ? countDiagnostics(file.content)
@@ -54,11 +38,7 @@ export function TitleBar() {
 
   return (
     <header className="titlebar">
-      <span className="brand">
-        <span className="mark">◆</span> Anode
-      </span>
-
-      <MenuBar />
+      <BrandMenu />
 
       {file && (
         <span className="tb-file">
@@ -89,12 +69,6 @@ export function TitleBar() {
               <Icon name="warning" size={13} /> {warnings}
             </span>
           )}
-        </span>
-      )}
-
-      {branch && (
-        <span className="tb-branch">
-          <Icon name="git" size={13} /> {branch}
         </span>
       )}
 

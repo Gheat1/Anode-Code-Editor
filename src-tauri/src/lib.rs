@@ -729,10 +729,173 @@ fn pty_kill(mgr: State<PtyManager>, id: String) {
     kill_session(&mgr, &id);
 }
 
+// ---------------------------------------------------------------------------
+// Claude usage meter. Claude Code logs every session as JSONL under
+// ~/.claude/projects/<encoded-cwd>/<session>.jsonl, where the cwd is encoded by
+// turning each non-alphanumeric character into '-'. We read the newest session
+// for the project and total the token usage from its assistant messages — a
+// reliable, structured source (no terminal scraping).
+// ---------------------------------------------------------------------------
+#[derive(Serialize, Default)]
+struct ClaudeUsage {
+    model: String,
+    context_tokens: u64, // tokens in the most recent turn's context window
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_read_tokens: u64,
+    cache_creation_tokens: u64,
+    cost_usd: f64,
+    messages: u64,
+}
+
+fn claude_home() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+}
+
+// e.g. C:\Users\me\My App -> C--Users-me-My-App
+fn encode_cwd(cwd: &str) -> String {
+    cwd.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
+}
+
+// Per-million-token pricing (input, output, cache-read, cache-write); used to
+// estimate cost when a transcript doesn't carry a costUSD field.
+fn model_pricing(model: &str) -> (f64, f64, f64, f64) {
+    let m = model.to_lowercase();
+    if m.contains("opus") {
+        (15.0, 75.0, 1.5, 18.75)
+    } else if m.contains("haiku") {
+        (0.8, 4.0, 0.08, 1.0)
+    } else if m.contains("sonnet") {
+        (3.0, 15.0, 0.3, 3.75)
+    } else {
+        (0.0, 0.0, 0.0, 0.0)
+    }
+}
+
+#[tauri::command]
+async fn claude_usage(cwd: String) -> Result<Option<ClaudeUsage>, String> {
+    run_blocking(move || {
+        if cwd.is_empty() {
+            return Ok(None);
+        }
+        let home = match claude_home() {
+            Some(h) => h,
+            None => return Ok(None),
+        };
+        let dir = home.join(".claude").join("projects").join(encode_cwd(&cwd));
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => return Ok(None), // no session logs yet for this project
+        };
+
+        // Newest .jsonl = the current / most recent session.
+        let mut newest: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            if let Ok(modified) = entry.metadata().and_then(|m| m.modified()) {
+                if newest.as_ref().map_or(true, |(t, _)| modified > *t) {
+                    newest = Some((modified, path));
+                }
+            }
+        }
+        let path = match newest {
+            Some((_, p)) => p,
+            None => return Ok(None),
+        };
+
+        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let mut u = ClaudeUsage::default();
+        let mut had_cost_field = false;
+        for line in content.lines() {
+            let v: serde_json::Value = match serde_json::from_str(line) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            // Some Claude Code versions store a per-line costUSD; sum it if present.
+            if let Some(c) = v.get("costUSD").and_then(|c| c.as_f64()) {
+                u.cost_usd += c;
+                had_cost_field = true;
+            }
+            if v.get("type").and_then(|t| t.as_str()) != Some("assistant") {
+                continue;
+            }
+            let msg = match v.get("message") {
+                Some(m) => m,
+                None => continue,
+            };
+            if let Some(model) = msg.get("model").and_then(|m| m.as_str()) {
+                if !model.is_empty() {
+                    u.model = model.to_string();
+                }
+            }
+            if let Some(usage) = msg.get("usage") {
+                let g = |k: &str| usage.get(k).and_then(|x| x.as_u64()).unwrap_or(0);
+                let inp = g("input_tokens");
+                let cr = g("cache_read_input_tokens");
+                let cc = g("cache_creation_input_tokens");
+                u.input_tokens += inp;
+                u.output_tokens += g("output_tokens");
+                u.cache_read_tokens += cr;
+                u.cache_creation_tokens += cc;
+                u.context_tokens = inp + cr + cc; // latest turn's context size
+                u.messages += 1;
+            }
+        }
+
+        if !had_cost_field {
+            let (pin, pout, pcr, pcc) = model_pricing(&u.model);
+            u.cost_usd = (u.input_tokens as f64 * pin
+                + u.output_tokens as f64 * pout
+                + u.cache_read_tokens as f64 * pcr
+                + u.cache_creation_tokens as f64 * pcc)
+                / 1_000_000.0;
+        }
+
+        Ok(Some(u))
+    })
+    .await
+}
+
+#[tauri::command]
+async fn claude_limits(cwd: String) -> Result<String, String> {
+    run_blocking(move || {
+        // Fetch the real subscription limits by running `/usage` headlessly — a
+        // separate, short-lived process that doesn't touch the user's live
+        // session and consumes no model tokens. The 5-hour + weekly figures and
+        // reset times aren't cached locally, so this is the only reliable source.
+        let mut cmd = if cfg!(windows) {
+            // cmd /c for the PATHEXT shim (claude is a .cmd/.ps1 wrapper here).
+            let mut c = sys_command("cmd");
+            c.args(["/c", "claude", "-p", "/usage"]);
+            c
+        } else {
+            let mut c = sys_command("claude");
+            c.args(["-p", "/usage"]);
+            c
+        };
+        if !cwd.is_empty() {
+            cmd.current_dir(&cwd);
+        }
+        // No stdin → proceed immediately instead of waiting for piped input.
+        cmd.stdin(std::process::Stdio::null());
+        let out = cmd.output().map_err(|e| e.to_string())?;
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    })
+    .await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(PtyManager::default())
         .setup(|app| {
             // Opaque window, just rounded corners via DWM — no acrylic (it forces
@@ -768,7 +931,9 @@ pub fn run() {
             pty_start,
             pty_write,
             pty_resize,
-            pty_kill
+            pty_kill,
+            claude_usage,
+            claude_limits
         ])
         .run(tauri::generate_context!())
         .expect("error while running Anode");

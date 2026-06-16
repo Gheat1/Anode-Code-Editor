@@ -108,6 +108,30 @@ export const github = {
 export const openUrl = (url: string) =>
   inTauri ? invoke<void>("open_url", { url }) : Promise.resolve();
 
+// ---- Claude usage --------------------------------------------------------
+// Token/cost totals for a project's most recent Claude Code session, read from
+// its JSONL transcript under ~/.claude/projects (mirrors the Rust struct).
+export interface ClaudeUsage {
+  model: string;
+  context_tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  cost_usd: number;
+  messages: number;
+}
+
+export const claudeUsage = (cwd: string) =>
+  inTauri
+    ? invoke<ClaudeUsage | null>("claude_usage", { cwd })
+    : Promise.resolve(null);
+
+// Raw text from `claude -p /usage` — the real subscription limits. Parsed by
+// src/lib/claudeLimits.ts. Empty string outside Tauri / on failure.
+export const claudeLimits = (cwd: string) =>
+  inTauri ? invoke<string>("claude_limits", { cwd }) : Promise.resolve("");
+
 // ---- Window --------------------------------------------------------------
 export const setBlur = (enabled: boolean) =>
   inTauri ? invoke<void>("set_blur", { enabled }) : Promise.resolve();

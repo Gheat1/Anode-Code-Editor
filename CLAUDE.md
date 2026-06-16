@@ -13,16 +13,20 @@ need; everything here reflects the current state of the repo.
 code editor for Windows, macOS, and Linux, built **from scratch (not on VS
 Code)**.
 
-- **Version:** 1.3.4 · **Author/Publisher:** Gheat · **Copyright:** © 2026 Gheat
+- **Version:** 1.4.0 · **Author/Publisher:** Gheat · **Copyright:** © 2026 Gheat
 - **Bundle identifier:** `com.anode.editor`
 - **Primary platform:** Windows (acrylic blur, DWM rounded corners). macOS/Linux
   are fully supported with graceful fallbacks.
 
-Signature features: an embedded **Claude Code** CLI (real `claude`, no API key),
-a VS Code‑style **Source Control** panel with GitHub device‑flow login, an
-integrated **terminal**, **split editing**, a deep **theme/palette** system with
-saved palettes, **project switching** with emoji/image icons, a custom
-**smooth‑caret** editor, and a first‑run **setup wizard**.
+Signature features: an embedded **Claude Code** CLI (real `claude`, no API key)
+that **keeps running when its panel is closed** with a token/cost **usage
+meter** and **desktop notifications**, a VS Code‑style **Source Control** panel
+with GitHub device‑flow login, an integrated **terminal**, **split editing**, a
+deep **theme/palette** system with saved palettes, rich **syntax highlighting**
+with **inline color swatches**, an optional **rounded‑panel** layout, **project
+switching** with emoji/image icons, a unified **right‑click context menu**, a
+single **brand dropdown menu**, a custom **smooth‑caret** editor, and a
+first‑run **setup wizard**.
 
 ---
 
@@ -36,7 +40,7 @@ saved palettes, **project switching** with emoji/image icons, a custom
 | Terminal UI      | **@xterm/xterm** + **@xterm/addon-fit** |
 | Markdown         | **markdown-it** (+ anchor, task-lists) |
 | State            | **zustand** (+ `persist` middleware → `localStorage`) |
-| Rust deps        | `tauri`, `tauri-plugin-dialog`, `portable-pty`, `reqwest`, `window-vibrancy`, `base64`, `serde`/`serde_json` |
+| Rust deps        | `tauri`, `tauri-plugin-dialog`, `tauri-plugin-notification`, `portable-pty`, `reqwest`, `window-vibrancy`, `base64`, `serde`/`serde_json` |
 
 Why Tauri over Electron: tiny installers (uses the OS webview), low RAM, and
 native Windows acrylic. Why CodeMirror over Monaco: Monaco *is* the VS Code
@@ -96,26 +100,36 @@ Anode Code Editor/
 │   │   └── global.css                    # ALL styling, driven by CSS variables
 │   ├── editor/
 │   │   ├── setup.ts                      # CodeMirror extensions, languages, syntax highlight
+│   │   ├── colorPicker.ts                # inline hex color swatches (click → OS color wheel)
 │   │   ├── smoothCaret.ts                # custom animated caret (ViewPlugin)
 │   │   ├── linter.ts                     # demo diagnostics -> error/warning underlines
 │   │   └── activeView.ts                 # tracks the focused editor + its file id (for split)
 │   ├── lib/
 │   │   ├── tauri.ts                      # typed wrappers around ALL Rust commands + events
-│   │   └── actions.ts                    # app-level actions (save, open folder, editor cmds)
+│   │   ├── actions.ts                    # app-level actions (save, open folder, editor + clipboard cmds)
+│   │   ├── notify.ts                     # desktop notification helper (Tauri notification plugin)
+│   │   ├── account.ts                    # Anode-account sync client (see §20)
+│   │   ├── claudeLimits.ts               # parse `claude -p /usage` output into limit bars
+│   │   └── usageFormat.ts                # token/cost number formatting for the usage meter
 │   ├── components/
-│   │   ├── TitleBar.tsx                  # frameless title bar: brand, menu bar, file info, diagnostics, window buttons
-│   │   ├── MenuBar.tsx                   # File/Edit/View/Terminal/Help dropdown menus
-│   │   ├── ActivityBar.tsx               # left rail: project switcher + view toggles + tool buttons
-│   │   ├── ProjectIconPicker.tsx         # popover: emoji grid, tint, upload png/svg
-│   │   ├── Sidebar.tsx                   # explorer (FS tree) OR Source Control, resizable
+│   │   ├── TitleBar.tsx                  # frameless title bar: brand menu, file info, diagnostics, window buttons
+│   │   ├── MenuBar.tsx                   # `BrandMenu`: the single ◆ Anode dropdown (File/Edit/View/Terminal/Help + About)
+│   │   ├── ContextMenu.tsx               # app-wide right-click menu provider + `useContextMenu()` hook
+│   │   ├── AboutModal.tsx                # About dialog (brand menu → Help → About Anode)
+│   │   ├── ActivityBar.tsx               # left rail: project switcher + view toggles + tool buttons + Claude run dot
+│   │   ├── ProjectIconPicker.tsx         # popover: emoji grid, tint, upload png/svg, remove-from-sidebar
+│   │   ├── Sidebar.tsx                   # explorer (FS tree) and/or Source Control, resizable
 │   │   ├── SourceControl.tsx             # VS Code-style SCM: branch bar, commit, sync, files, history, GitHub login
 │   │   ├── EditorArea.tsx                # tabs + editor host (single/split) + preview + terminal
 │   │   ├── EditorPane.tsx                # one CodeMirror instance bound to a file id
 │   │   ├── MarkdownPreview.tsx           # Obsidian-style markdown render
-│   │   ├── ClaudePanel.tsx               # right panel: Claude Code terminal + flags + status
+│   │   ├── ClaudePanel.tsx               # right panel: Claude Code terminal + flags + status + usage meter
+│   │   ├── ClaudeUsageBar.tsx            # token/cost footer under the Claude terminal
+│   │   ├── ClaudeUsageDetail.tsx         # detailed usage breakdown (Settings → Claude Code)
 │   │   ├── TerminalPanel.tsx             # bottom integrated shell
 │   │   ├── XtermView.tsx                 # reusable xterm.js <-> PTY bridge
-│   │   ├── SettingsPanel.tsx             # sectioned settings modal with icon nav
+│   │   ├── SettingsPanel.tsx             # sectioned settings modal with icon nav + per-section reset
+│   │   ├── AccountSync.tsx               # Settings → Account Sync UI (see §20)
 │   │   ├── SetupWizard.tsx               # first-run onboarding (welcome, sign in, projects, appearance)
 │   │   ├── ResizeHandle.tsx              # draggable divider (x or y axis)
 │   │   ├── FileLabel.tsx                 # filename that truncates base, keeps extension
@@ -142,16 +156,18 @@ There is **no `src/data/`** — the old `welcome.ts` demo files were removed.
 
 ```
 ┌─────────────────────── WebView (React) ───────────────────────┐
-│  App.tsx (layout + keybindings + appearance/blur effects)     │
-│   ├─ TitleBar ── MenuBar                                       │
+│  main.tsx → ContextMenuProvider → App.tsx                     │
+│  App.tsx (layout + keybindings + appearance effects)          │
+│   ├─ TitleBar ── BrandMenu (the single ◆ Anode dropdown)      │
 │   ├─ ActivityBar (projects, view switch, tool toggles)        │
-│   ├─ Sidebar → Explorer (FS tree) | SourceControl             │
+│   ├─ Sidebar → Explorer (FS tree) and/or SourceControl        │
 │   ├─ EditorArea → tabs → EditorPane(s) | MarkdownPreview       │
 │   │                     └─ TerminalPanel (XtermView "terminal")│
-│   ├─ ClaudePanel → XtermView "claude"                          │
-│   ├─ SettingsPanel (modal)                                    │
+│   ├─ ClaudePanel → XtermView "claude" (+ usage meter)          │
+│   ├─ SettingsPanel (modal) · AboutModal (modal)               │
 │   └─ SetupWizard (first run)                                  │
 │                                                               │
+│  ContextMenuProvider ── one app-wide right-click menu         │
 │  zustand store (state/store.ts) ── persisted to localStorage  │
 │  lib/tauri.ts  ── invoke<T>(cmd) + event listeners            │
 └───────────────────────────┬───────────────────────────────────┘
@@ -162,8 +178,10 @@ There is **no `src/data/`** — the old `welcome.ts` demo files were removed.
 │   • fs: read_dir, read_file, write_file, read_image_data_url  │
 │   • git: shells out to system `git`                           │
 │   • github: OAuth device flow via reqwest                     │
+│   • claude: claude_usage / claude_limits (read JSONL + /usage)│
 │   • pty: PtyManager (portable-pty) keyed by id                │
 │      emits  pty://output {id,chunk} / pty://exit  id          │
+│   • plugins: dialog, notification                             │
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -175,8 +193,11 @@ Data flow rules:
 - **The store is the single source of truth** for UI state and settings.
   Components subscribe with `useStore(selector)`.
 - **`syncAppearance(settings)`** (in `store.ts`) is the one place that applies
-  theme variables + fonts to the DOM; `App.tsx` calls it whenever `settings`
-  changes.
+  theme variables + fonts to the DOM (and toggles `body.rounded-ui`); `App.tsx`
+  calls it whenever `settings` changes.
+- **One right-click menu.** `ContextMenuProvider` (mounted in `main.tsx`) owns
+  the only context menu; components open it with `useContextMenu()(x, y, items)`
+  and `stopPropagation()` so the app-level default menu doesn't also fire.
 
 ---
 
@@ -198,10 +219,20 @@ in `localStorage`. Persist `version: 1`.
 | `fontFamily` | string | app-wide UI font (CSS font stack) |
 | `fontSize` | number | base px size, app-wide |
 | `editorFontFamily` | string | monospace font for editor + terminals |
+| `editorFontSize` | number | px size for editor + terminals (`--editor-font-size`) |
+| `lineHeight` | number | editor line height multiplier (`--editor-line-height`) |
 | `blurEnabled` | boolean | Windows acrylic on/off |
 | `smoothCaret` | boolean | animated caret on/off |
 | `lineNumbers` | boolean | editor gutter line numbers |
+| `tabSize` | number | spaces per indent in the editor |
+| `wordWrap` | boolean | soft-wrap long editor lines |
+| `highlightActiveLine` | boolean | tint the caret's line |
+| `autoCloseBrackets` | boolean | auto-insert the closing bracket/quote |
+| `combinedSidebar` | boolean | stack Explorer + Source Control in one panel |
+| `roundedCorners` | boolean | round/inset the workspace panels (`body.rounded-ui`) |
+| `notifications` | boolean | desktop notifications (Claude permission/ready, etc.) |
 | `showClaudeFolder` | boolean | show `.claude` in the explorer tree |
+| `claudeChatUi` | boolean | show the token/cost **usage meter** under the Claude terminal |
 | `claudeSkipPermissions` | boolean | → `--dangerously-skip-permissions` |
 | `claudePermissionMode` | "default"\|"acceptEdits"\|"plan" | → `--permission-mode` |
 | `claudeModel` | string | → `--model` (blank = CLI default) |
@@ -211,16 +242,23 @@ in `localStorage`. Persist `version: 1`.
 
 `DEFAULT_SETTINGS` holds all defaults. Theme priority in `syncAppearance`:
 `customTheme` > `customAccent` (via `themeFromAccent`) > `themeId` preset.
+`SettingsPanel` exposes a small **reset icon** per section that restores that
+section's fields to `DEFAULT_SETTINGS` (the field→section map lives in
+`resetSection`; keep it in sync when adding a setting to a section).
 
 ### Workspace state (top-level AppState)
 `projects: Project[]`, `activeProjectId`, `openFiles: OpenFile[]`,
 `activeFileId`, plus UI flags: `showPreview`, `showClaude`, `showSettings`,
-`showSidebar`, `showTerminal`, `splitView`, `splitFileId`, `splitWidth`,
-`welcomeDismissed`, `sidebarView` ("explorer"|"scm"), `sidebarWidth`,
-`claudeWidth`, `terminalHeight`, plus `sessions` (per-project open files) and
-`warmProjectIds` (LRU of projects whose Claude/terminal PTYs stay warm — see
-§11; reset to just the active project on rehydrate since PTYs don't survive a
-restart).
+`showSidebar`, `showTerminal`, `showAbout`, `splitView`, `splitFileId`,
+`splitWidth`, `welcomeDismissed`, `sidebarView` ("explorer"|"scm"),
+`sidebarWidth`, `claudeWidth`, `terminalHeight`, `terminalRestart` (bump to
+respawn the active project's shell — see §11), `claudeRunning`/`claudeBusy`
+(live status of the active project's Claude, surfaced so the ActivityBar can
+show a run dot even when the panel is closed), plus `sessions` (per-project open
+files) and `warmProjectIds` (LRU of projects whose Claude/terminal PTYs stay
+warm — see §11; reset to just the active project on rehydrate since PTYs don't
+survive a restart). `showAbout` is also reset to `false` on rehydrate so the
+About dialog never reopens on launch.
 
 `Project = { id, name, path, color, icon? }` — `icon` is an emoji char **or** a
 `data:` URL (uploaded png/svg). The seed project is `{id:"home", name:"Home",
@@ -232,9 +270,13 @@ path for real files.
 ### Actions
 `setSetting<K>(key,value)`, `setSidebarView`, `setSidebarWidth`,
 `setClaudeWidth`, `setTerminalHeight`, `setSplitFile`, `setSplitWidth`,
-`dismissWelcome`, `updateProject(id, patch)`, `markSaved(id)`, `addProject`,
+`dismissWelcome`, `updateProject(id, patch)`, `removeProject(id)` (drops a
+project from the sidebar — **does not touch disk**; if it was active, switches
+to the next project and restores its tabs), `markSaved(id)`, `addProject`,
 `setActiveProject`, `openFile`, `closeFile`, `setActiveFile`,
-`updateFileContent`, and a generic `toggle(key)` for the boolean UI flags.
+`updateFileContent`, `newTerminal()` (open the terminal + bump
+`terminalRestart`), `setClaudeStatus(running, busy)`, and a generic
+`toggle(key)` for the boolean UI flags (incl. `showAbout`).
 
 ### Persistence: `migrate` + `merge`
 - **`migrate`** (runs when stored `version < 1`): strips the legacy `welcome.md`
@@ -271,7 +313,16 @@ surface can't be both opaque‑exact and blurred at once.** `App.tsx` forces
 
 ### Layout variables
 `--titlebar-h` (36), `--activitybar-w` (56), `--radius` (10), `--app-font`,
-`--editor-font`, `--app-font-size`.
+`--editor-font`, `--app-font-size`, `--editor-font-size`, `--editor-line-height`
+(the last two driven by the `editorFontSize` / `lineHeight` settings via
+`syncAppearance`).
+
+### Rounded-panel mode (`body.rounded-ui`)
+The `roundedCorners` setting toggles a `rounded-ui` class on `<body>` (set in
+`syncAppearance`). Its rules (bottom of `global.css`) inset the `.workspace`
+(padding + gap) and give the activity bar, sidebar, editor, and Claude panels a
+full border + `--radius`, so they float as one cohesive set of rounded cards
+over the app background. Off by default.
 
 ### Other conventions
 - `.app` has `border-radius:10px; overflow:hidden` + a hairline border; the
@@ -280,8 +331,11 @@ surface can't be both opaque‑exact and blurred at once.** `App.tsx` forces
 - Animations live at the bottom of `global.css` (`pop-in`, `fade-in`,
   `scale-in`, `slide-up/left/right`, `pulse`) with a `prefers-reduced-motion`
   guard.
-- CodeMirror is themed via `.cm-*` rules + a `HighlightStyle` built in `setup.ts`
-  from computed CSS variables.
+- CodeMirror is themed via `.cm-*` rules + a `HighlightStyle` built in `setup.ts`.
+  The highlight palette is a fixed, vibrant One-Dark-flavored set (keywords,
+  functions, strings, numbers, types, etc. each get a distinct hue); only
+  headings/links follow the theme accent. Inline hex color swatches are
+  `.cm-color-swatch`.
 
 ### Theme presets (`THEMES` in `themes.ts`)
 `midnight` (default), `obsidian`, `nord`, `rose`, `graphite` (dark grey), `oled`
@@ -297,8 +351,8 @@ custom-palette editor exposes; `currentThemeVars()` snapshots the applied theme;
 ## 8. Rust backend (`src-tauri/src/lib.rs`)
 
 `main.rs` is a thin entry that calls `anode_lib::run()`. `run()` registers the
-dialog plugin, manages `PtyManager`, applies acrylic + rounds corners on Windows
-at setup, and registers the command handler.
+**dialog** and **notification** plugins, manages `PtyManager`, applies acrylic +
+rounds corners on Windows at setup, and registers the command handler.
 
 ### Window
 - `round_corners(window)` — **Windows only**; calls `DwmSetWindowAttribute`
@@ -329,7 +383,8 @@ the screen with flickering terminals and froze the app. **Never use
 ### Git (shells out to system `git` via `sys_command`, reusing the user's credential manager)
 - `git_available() -> bool`
 - `git_init(path)`
-- `git_status(path) -> GitStatus{branch,dirty,files}` (used by TitleBar)
+- `git_status(path) -> GitStatus{branch,dirty,files}` (branch/dirty summary; the
+  TitleBar no longer renders the branch — SourceControl shows it via `git_info`)
 - `git_info(path) -> GitInfo{is_repo,branch,has_commits,files:[{path,status}],ahead,behind,remote,upstream}` (used by SourceControl)
 - `git_log(path, limit) -> Vec<Commit{hash,short,author,date,subject}>` (uses `\x1f`-separated `--pretty`)
 - `git_pull` (`pull --ff-only`), `git_push` (`push`), `git_publish` (`push -u origin HEAD` — first push)
@@ -351,9 +406,20 @@ the screen with flickering terminals and froze the app. **Never use
 - Token **and login** are stored at `app_config_dir()/github.json`
   (`{ token, login }`).
 
+### Claude usage (token/cost meter)
+- `claude_usage(cwd) -> Option<ClaudeUsage>` — reads the newest JSONL transcript
+  under `~/.claude/projects/<encoded-cwd>` and totals token usage + estimated
+  cost from the assistant messages (structured, no terminal scraping). Returns
+  `None` if there are no logs for the project yet.
+- `claude_limits(cwd) -> String` — runs `claude -p /usage` headlessly (a short,
+  token-free process) and returns its raw text; parsed by `lib/claudeLimits.ts`
+  into the 5-hour / weekly limit bars.
+
 ### Misc
 - `open_url(url)` — opens in the default browser: `cmd /c start` (Windows),
   `open` (macOS), `xdg-open` (Linux).
+- There is **no** `delete_path` / file-delete command — the sidebar never
+  deletes anything from disk (see §11/§19).
 
 ### Pseudo-terminals (`portable-pty`, keyed pool)
 `PtyManager { sessions: Mutex<HashMap<String, PtySession>> }` managed as Tauri
@@ -372,8 +438,11 @@ session (see `WarmTerminals.tsx` and §11).
 
 ### Capabilities (`capabilities/default.json`)
 `core:default`, window start-dragging/minimize/toggle-maximize/close,
-`core:event:default`, `dialog:default`, `dialog:allow-open`. Filesystem is via
-custom Rust commands, **not** the fs plugin, so no fs scope config is needed.
+`core:event:default`, `dialog:default`, `dialog:allow-open`, and the
+notification perms (`notification:default`, `notification:allow-notify`,
+`notification:allow-is-permission-granted`,
+`notification:allow-request-permission`). Filesystem is via custom Rust
+commands, **not** the fs plugin, so no fs scope config is needed.
 
 ---
 
@@ -382,12 +451,17 @@ custom Rust commands, **not** the fs plugin, so no fs scope config is needed.
 `inTauri` (boolean) detects the desktop runtime. `invoke<T>(cmd, args)` throws
 outside Tauri. Typed groups:
 
-- `fs.{readDir, readFile, writeFile, readImageDataUrl}`
+- `fs.{readDir, readFile, writeFile, readImageDataUrl}` (no `delete` — by design)
 - `pickFolder()`, `pickImage()` (dialog plugin)
 - `git.{available, init, info, log, status, pull, push, publish, commitAll}`
 - `github.{deviceStart, devicePoll, user, logout}`
+- `claudeUsage(cwd)`, `claudeLimits(cwd)`
 - `openUrl(url)`, `setBlur(enabled)`
 - `pty.{start, write, resize, kill}`, `onPtyOutput(cb)`, `onPtyExit(cb)`
+
+Desktop notifications use `lib/notify.ts` (`notify(title, body?)`), a thin
+wrapper over `@tauri-apps/plugin-notification` that requests permission once and
+no-ops outside Tauri / if denied — not part of the `lib/tauri.ts` groups.
 
 **Add a Rust command → add its typed wrapper here.** TS interfaces here mirror
 the Rust `Serialize` structs exactly (snake_case fields: `is_dir`, `is_repo`,
@@ -397,12 +471,19 @@ the Rust `Serialize` structs exactly (snake_case fields: `is_dir`, `is_repo`,
 
 ## 10. Editor (`src/editor/*`, `src/components/EditorPane.tsx`)
 
-- **`setup.ts`** — `baseExtensions({lineNumbers})` (gutters, history, brackets,
-  search, autocomplete, lint gutter, keymaps incl. `indentWithTab`,
-  line-wrapping), `languageFor(filename)` and `languageName(filename)` (ts/tsx,
-  js/jsx, md, py, rs, css, html, json), and `anodeHighlight()` — a
-  `HighlightStyle` built from **computed CSS variables** so syntax colors follow
-  the theme.
+- **`setup.ts`** — `baseExtensions(opts)` where `opts` is
+  `{lineNumbers, tabSize, wordWrap, highlightActiveLine, autoCloseBrackets}`
+  (gutters, history, brackets, search, autocomplete, lint gutter, the inline
+  color picker, keymaps incl. `indentWithTab`, line-wrapping — each behavior
+  gated on its setting), `languageFor(filename)` and `languageName(filename)`
+  (ts/tsx, js/jsx, md, py, rs, css, html, json), and `anodeHighlight()` — a
+  vibrant fixed syntax `HighlightStyle` (headings/links follow the theme accent;
+  see §7). EditorPane keys its rebuild on these opts.
+- **`colorPicker.ts`** — `inlineColorPicker`, a `ViewPlugin` that scans the
+  visible viewport for hex color literals (`#rgb`/`#rgba`/`#rrggbb`/`#rrggbbaa`)
+  and renders a clickable `.cm-color-swatch` before each one. Clicking opens the
+  OS color wheel (`<input type="color">`) and writes the chosen hex back into the
+  document on `change`.
 - **`smoothCaret.ts`** — a `ViewPlugin` that draws a `.smooth-caret` div and
   glides it to the cursor with a CSS transition; the native caret is hidden
   (`caret-color: transparent`, toggled by the `no-smooth-caret` class).
@@ -432,14 +513,28 @@ the Rust `Serialize` structs exactly (snake_case fields: `is_dir`, `is_repo`,
   (flags apply on the next session).
 - **`ClaudePanel.tsx`** — right panel. Renders `XtermView id="claude"
   program="claude"`. `claudeArgs(settings)` builds the CLI flags. Header has a
-  badge, title, project name, a **status pill** (pulsing "ready" / "stopped" via
-  `onStatus`), a **New session** button (remounts via a `sessionKey`), and close.
-  A **"⚠ bypass" pill** appears when `claudeSkipPermissions` is on. Structured
-  flag changes auto-restart the session; text flags (model, extra) apply on
-  manual restart.
+  badge, title, project name, a **status pill** (pulsing "ready"/"working"/
+  "stopped" via `onStatus` + a busy heuristic), a usage-meter toggle, a **New
+  session** button (remounts via a `sessionKey`), and close. A **"⚠ bypass"
+  pill** appears when `claudeSkipPermissions` is on. Structured flag changes
+  auto-restart the session; text flags (model, extra) apply on manual restart.
+  It also (a) publishes status to the store via `setClaudeStatus(running, busy)`
+  so the ActivityBar can show a run dot, (b) renders **`ClaudeUsageBar`** when
+  `claudeChatUi` is on, and (c) fires desktop notifications via `lib/notify.ts`
+  when Claude prints a permission prompt or finishes a turn while the panel is
+  closed / the window is backgrounded.
+  - **Stays running when closed.** The panel is **not** unmounted when you close
+    it: `App.tsx` latches `claudeMounted` true once Claude has been opened this
+    session and thereafter keeps `<ClaudePanel>` mounted, with the panel itself
+    setting `display:none` when `showClaude` is false. So closing the tab (or
+    switching workspace) leaves the `claude` PTY alive; the run dot on the
+    ActivityBar keeps showing its status. A cold launch with the panel left
+    closed does **not** auto-spawn Claude.
 - **`TerminalPanel.tsx`** — bottom shell. Renders `XtermView id="terminal"
   program={null}`. Vertically resizable (`ResizeHandle axis="y"`), opens in the
-  active project's folder.
+  active project's folder. A header **"+"** button and the store's
+  `newTerminal()` (also reachable from the right-click menu / brand menu) bump
+  `terminalRestart`, which respawns the active project's shell fresh.
 
 Switching projects no longer reboots the session. **`WarmTerminals.tsx`** keeps
 a stack of `XtermView`s — one per recently-active project (an LRU of `WARM_CAP`,
@@ -472,18 +567,21 @@ Auto-detects state via `git.available()` + `git.info(path)`:
 
 | Component | Responsibility |
 | --------- | -------------- |
-| `App` | Layout grid, `syncAppearance` effect, blur effect, global keybindings, mounts modals |
-| `TitleBar` | Frameless drag bar: brand, `MenuBar`, active file + language, diagnostics, git branch, window controls (min/max/close via `@tauri-apps/api/window`) |
-| `MenuBar` | Dropdown menus (File/Edit/View/Terminal/Help); actions call `lib/actions` + store toggles; closes on outside click/Escape |
-| `ActivityBar` | Project switcher (click=activate, right-click=icon picker), Explorer/SCM view switch, preview/Claude/Settings toggles |
-| `ProjectIconPicker` | Fixed popover: 40 emojis, tint colors, "Upload PNG/SVG", reset |
-| `Sidebar` | Width + `ResizeHandle`; renders `ExplorerView` (lazy FS tree, hides `.claude` unless enabled) or `SourceControl` |
+| `App` | Layout grid, `syncAppearance` effect, global keybindings, default right-click menu, latches `claudeMounted`, mounts modals (Settings, About, SetupWizard) |
+| `TitleBar` | Frameless drag bar: `BrandMenu`, active file + language, diagnostics, window controls (min/max/close via `@tauri-apps/api/window`). **No git branch** — that's in SourceControl now |
+| `MenuBar` (`BrandMenu`) | The single ◆ Anode dropdown grouping File/Edit/View/Terminal/Help + **About Anode**; actions call `lib/actions` + store; closes on outside click/Escape |
+| `ContextMenu` | `ContextMenuProvider` + `useContextMenu()`; one app-wide right-click menu with viewport clamping, click-away scrim, disabled/`danger` items |
+| `AboutModal` | About dialog (version, author, link); opened from the brand menu's Help group |
+| `ActivityBar` | Project switcher (click=activate, right-click=icon picker), Explorer/SCM buttons (VS Code toggle behavior), **sidebar show/hide** button, markdown-preview toggle (**only when a `.md` file is active**), Claude toggle with a **run dot**, Settings, account |
+| `ProjectIconPicker` | Fixed popover: 40 emojis, tint colors, "Upload PNG/SVG", reset, **Remove from sidebar** (disk-safe) |
+| `Sidebar` | Width + `ResizeHandle`; renders `ExplorerView` (lazy FS tree, hides `.claude` unless enabled) and/or `SourceControl`. When `combinedSidebar` is on, both are stacked in one panel (`.sidebar-split` regions) |
 | `EditorArea` | Tab strip + split button; editor host: single `EditorPane`, split (two panes + divider + file dropdown), or `MarkdownPreview`; renders `TerminalPanel` |
 | `EditorPane` | One CodeMirror instance for a file id |
 | `MarkdownPreview` | markdown-it render with `.md-body` styling |
-| `ClaudePanel` / `TerminalPanel` / `XtermView` | See §11 |
-| `SettingsPanel` | Modal with left **icon nav** (Appearance, Typography, Editor, Claude Code, Account Sync) + content per section |
-| `SetupWizard` | First-run wizard: Welcome → Sign in (GitHub + Anode-account placeholder) → Projects (+icons) → Appearance → All set. Dismisses permanently on finish/skip |
+| `ClaudePanel` / `ClaudeUsageBar` / `ClaudeUsageDetail` / `TerminalPanel` / `XtermView` | See §11; usage bar/detail render token + cost from `claude_usage`/`claude_limits` |
+| `SettingsPanel` | Modal with left **icon nav** (Appearance, Typography, Editor, Claude Code, Account Sync, Credits) + content per section, with a small **reset icon** per section |
+| `AccountSync` | Settings → Account Sync UI (see §20) |
+| `SetupWizard` | First-run wizard: Welcome → Sign in (GitHub + Anode-account) → Projects (+icons) → Appearance → All set. Dismisses permanently on finish/skip |
 | `ResizeHandle` | Draggable divider; `axis` "x"/"y", `dir` ±1, `side` left/right/top/bottom |
 | `FileLabel` | Splits name into base + extension; base gets the ellipsis, extension stays visible |
 | `Icon` | `<Icon name size strokeWidth className />`; all glyphs are 24×24 currentColor strokes |
@@ -492,7 +590,7 @@ Auto-detects state via `git.available()` + `git.info(path)`:
 `folder, folderOpen, file, markdown, code, git, pull, push, settings, sparkles,
 preview, search, plus, close, chevron, minimize, maximize, send, warning, error,
 check, files, github, sync, commit, logout, save, terminal, split, palette,
-type, sliders`.
+type, sliders, user, heart, stop, slash, copy, sidebar, reset`.
 
 ---
 
@@ -539,11 +637,12 @@ project's pathless state has nothing to write.
 
 ## 16. Build & release
 
-`tauri.conf.json` holds `version` (currently `1.3.4`), `productName` ("Anode"),
+`tauri.conf.json` holds `version` (currently `1.4.0`), `productName` ("Anode"),
 `identifier`, the frameless/transparent/centered window, and bundle metadata
 (`targets: "all"`, `publisher`/`copyright`, icon list incl. `.icns`/`.ico`).
-Bump the version in **all three**: `tauri.conf.json`, `package.json`,
-`Cargo.toml`.
+Bump the version in **all three** (`tauri.conf.json`, `package.json`,
+`Cargo.toml`) plus the displayed `APP_VERSION` constant in both
+`SettingsPanel.tsx` (Credits) and `AboutModal.tsx`.
 
 ```bash
 npm run app:build      # build installers for the current OS
@@ -599,10 +698,21 @@ automatically in the Settings theme grid and the SetupWizard.
 2. Add the SVG `<path>` (24×24, `currentColor`, stroke) to `PATHS`.
 
 ### Add a menu item / keybinding
-- Menu: add an entry to the relevant menu array in `MenuBar.tsx` (`{label,
-  shortcut?, run}`).
+- Menu: add an `{label, shortcut?, run}` entry to the relevant group in the
+  `menus` array in `MenuBar.tsx` (the `BrandMenu` dropdown).
 - Keybinding: add a `case` to the `keydown` switch in `App.tsx` (and ideally
   reflect it in the menu's `shortcut`).
+
+### Add a context-menu item
+Call `useContextMenu()` to get the `open(x, y, items)` fn and pass
+`ContextMenuItem[]` (`{label, run?, disabled?, danger?, separator?}`). To
+override the app's default right-click menu for an element, build your own items
+in its `onContextMenu`, call `open(...)`, and `e.preventDefault();
+e.stopPropagation()`.
+
+### Add a desktop notification
+Call `notify(title, body?)` from `lib/notify.ts` (gate it on
+`settings.notifications`). It requests permission once and no-ops outside Tauri.
 
 ### Add an editor language
 Add a case to `languageFor()` and `languageName()` in `setup.ts` and the
@@ -627,6 +737,19 @@ matching `@codemirror/lang-*` dependency.
   work via the system credential manager without signing in.
 - The persisted store can hold stale shape after big refactors — bump
   `version` and extend `migrate` when removing/renaming top-level fields.
+- **The sidebar never deletes from disk.** "Remove from sidebar" only drops a
+  project from the list; there is no file/folder delete command. This is
+  intentional — don't reintroduce a destructive delete.
+- **Claude keeps running when its panel is closed** (mounted-but-hidden once
+  opened — see §11). This is intentional; the ActivityBar run dot shows it's
+  alive. A cold launch with the panel closed does not auto-start it.
+- **Notifications are heuristic.** The "needs permission" trigger matches
+  Claude's prompt wording (`Do you want to…` / `❯ 1. Yes`) scraped from the
+  terminal buffer; if Claude changes that wording the regex in `ClaudePanel`
+  may need a tweak. "Ready" fires on a busy→idle transition only when the panel
+  is closed or the window is backgrounded.
+- **Rounded corners** (`roundedCorners`) only restyle via `body.rounded-ui`;
+  they don't change layout logic, so resize handles still work in the gaps.
 
 ---
 

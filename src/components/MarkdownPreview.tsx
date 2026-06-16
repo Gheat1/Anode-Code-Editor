@@ -7,7 +7,7 @@ import { useStore } from "../state/store";
 // A clean, Obsidian-flavored renderer: GFM tables, task lists, autolinked
 // headings, and code fences. Styling lives in .md-body (global.css).
 const md = new MarkdownIt({
-  html: false,
+  html: true,
   linkify: true,
   typographer: true,
   breaks: false,

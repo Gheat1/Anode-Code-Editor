@@ -63,4 +63,52 @@ export const editor = {
       openSearchPanel(v);
     }
   },
+
+  // Is there a focused editor with a non-empty selection? Used to grey out
+  // Cut/Copy in the context menu when they'd do nothing.
+  hasSelection: () => {
+    const v = getActiveView();
+    if (!v) return false;
+    const s = v.state.selection.main;
+    return s.from !== s.to;
+  },
+
+  // Clipboard ops on the focused pane. CodeMirror has no built-in cut/copy/paste
+  // commands, so we drive the async Clipboard API and edit the doc directly —
+  // this works inside the Tauri webview where execCommand("paste") is blocked.
+  copy: async () => {
+    const v = getActiveView();
+    if (!v) return;
+    const sel = v.state.selection.main;
+    const text = v.state.sliceDoc(sel.from, sel.to);
+    if (text) await navigator.clipboard.writeText(text);
+    v.focus();
+  },
+  cut: async () => {
+    const v = getActiveView();
+    if (!v) return;
+    const sel = v.state.selection.main;
+    const text = v.state.sliceDoc(sel.from, sel.to);
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    v.dispatch({ changes: { from: sel.from, to: sel.to, insert: "" } });
+    v.focus();
+  },
+  paste: async () => {
+    const v = getActiveView();
+    if (!v) return;
+    let text = "";
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      return; // clipboard read denied — nothing to paste
+    }
+    if (!text) return;
+    const sel = v.state.selection.main;
+    v.dispatch({
+      changes: { from: sel.from, to: sel.to, insert: text },
+      selection: { anchor: sel.from + text.length },
+    });
+    v.focus();
+  },
 };

@@ -24,6 +24,7 @@ export function ProjectIconPicker({
   onClose: () => void;
 }) {
   const updateProject = useStore((s) => s.updateProject);
+  const removeProject = useStore((s) => s.removeProject);
 
   function setIcon(icon: string | undefined) {
     updateProject(project.id, { icon });
@@ -83,6 +84,17 @@ export function ProjectIconPicker({
           </button>
           <button className="ip-btn ghost" onClick={() => setIcon(undefined)}>
             Reset to folder
+          </button>
+          <button
+            className="ip-btn danger"
+            onClick={() => {
+              if (window.confirm(`Remove "${project.name}" from the sidebar?`)) {
+                removeProject(project.id);
+                onClose();
+              }
+            }}
+          >
+            Remove from sidebar
           </button>
         </div>
         <div className="ip-soon">More icon packs coming soon</div>

@@ -6,11 +6,14 @@ import { inTauri } from "../lib/tauri";
 
 // Integrated shell at the bottom of the editor column. One warm shell per
 // recent project (id "terminal:<projectId>"); opens in the active project's
-// folder. Toggle with Ctrl+`.
+// folder. Toggle with Ctrl+`. "New Terminal" (header button or the right-click
+// menu) bumps `terminalRestart` in the store, which respawns the active shell.
 export function TerminalPanel() {
   const toggle = useStore((s) => s.toggle);
   const height = useStore((s) => s.terminalHeight);
   const setHeight = useStore((s) => s.setTerminalHeight);
+  const restartKey = useStore((s) => s.terminalRestart);
+  const newTerminal = useStore((s) => s.newTerminal);
 
   return (
     <div className="term-panel" style={{ height }}>
@@ -27,6 +30,9 @@ export function TerminalPanel() {
         <Icon name="terminal" size={14} />
         <span>Terminal</span>
         <span style={{ flex: 1 }} />
+        <button className="cl-close" title="New shell" onClick={newTerminal}>
+          <Icon name="plus" size={15} />
+        </button>
         <button
           className="cl-close"
           title="Close terminal"
@@ -37,7 +43,7 @@ export function TerminalPanel() {
       </div>
       {inTauri ? (
         <div className="term-body">
-          <WarmTerminals idPrefix="terminal" program={null} />
+          <WarmTerminals idPrefix="terminal" program={null} restartKey={restartKey} />
         </div>
       ) : (
         <div className="cl-note">The terminal runs in the desktop app.</div>

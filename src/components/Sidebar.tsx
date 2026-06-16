@@ -74,7 +74,7 @@ function FsEntry({ entry, depth }: { entry: DirEntry; depth: number }) {
           name={entry.is_dir ? (open ? "folderOpen" : "folder") : iconFor(entry.name)}
           size={16}
         />
-        <span>{entry.name}</span>
+        <span className="tree-name">{entry.name}</span>
       </div>
       {open && children && (
         <div className="tree-children">
@@ -90,6 +90,7 @@ function FsEntry({ entry, depth }: { entry: DirEntry; depth: number }) {
 function FsTree({ rootPath }: { rootPath: string }) {
   const [entries, setEntries] = useState<DirEntry[] | null>(null);
   const filter = useVisibleFilter();
+
   useEffect(() => {
     fs.readDir(rootPath)
       .then(setEntries)
@@ -132,10 +133,26 @@ export function Sidebar() {
   const sidebarView = useStore((s) => s.sidebarView);
   const sidebarWidth = useStore((s) => s.sidebarWidth);
   const setSidebarWidth = useStore((s) => s.setSidebarWidth);
+  const combined = useStore((s) => s.settings.combinedSidebar);
 
+  // Combined: Explorer and Source Control stacked in one scrollable column, each
+  // in its own region. Otherwise the activity-bar view switch picks one.
   return (
     <aside className="sidebar" style={{ width: sidebarWidth }}>
-      {sidebarView === "explorer" ? <ExplorerView /> : <SourceControl />}
+      {combined ? (
+        <div className="sidebar-split">
+          <div className="sidebar-region explorer">
+            <ExplorerView />
+          </div>
+          <div className="sidebar-region scm">
+            <SourceControl />
+          </div>
+        </div>
+      ) : sidebarView === "explorer" ? (
+        <ExplorerView />
+      ) : (
+        <SourceControl />
+      )}
       <ResizeHandle
         side="right"
         value={sidebarWidth}

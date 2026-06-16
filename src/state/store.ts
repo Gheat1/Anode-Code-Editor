@@ -65,9 +65,18 @@ export interface Settings {
   fontFamily: string;
   fontSize: number; // px, applies app-wide
   editorFontFamily: string;
+  editorFontSize: number; // px, editor + terminals only
+  lineHeight: number; // editor line height (unitless multiplier)
   blurEnabled: boolean;
   smoothCaret: boolean;
   lineNumbers: boolean;
+  combinedSidebar: boolean; // show Explorer + Source Control stacked in one panel
+  roundedCorners: boolean; // round the workspace panels (sidebar/editor/claude/terminal)
+  notifications: boolean; // desktop notifications (Claude permission/ready, etc.)
+  tabSize: number; // spaces per indent in the editor
+  wordWrap: boolean; // soft-wrap long lines in the editor
+  highlightActiveLine: boolean; // tint the line the caret is on
+  autoCloseBrackets: boolean; // auto-insert the closing bracket/quote
   showClaudeFolder: boolean; // show the .claude folder in the explorer
 
   // Claude Code launch flags
@@ -77,6 +86,11 @@ export interface Settings {
   claudeContinue: boolean; // --continue
   claudeVerbose: boolean; // --verbose
   claudeExtraFlags: string; // appended raw
+
+  // Overlay a chat-style UI on top of the live Claude terminal. The real
+  // terminal keeps running underneath (so every slash command still works);
+  // toggle off to use it raw. See ClaudeChat / ClaudePanel.
+  claudeChatUi: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -88,9 +102,18 @@ export const DEFAULT_SETTINGS: Settings = {
   fontFamily: "'Inter', system-ui, sans-serif",
   fontSize: 14,
   editorFontFamily: "'JetBrains Mono', 'Cascadia Code', monospace",
+  editorFontSize: 13.5,
+  lineHeight: 1.7,
   blurEnabled: false, // acrylic removed for performance (window is opaque)
   smoothCaret: true,
   lineNumbers: true,
+  combinedSidebar: false,
+  roundedCorners: false,
+  notifications: true,
+  tabSize: 2,
+  wordWrap: true,
+  highlightActiveLine: true,
+  autoCloseBrackets: true,
   showClaudeFolder: false,
   claudeSkipPermissions: false,
   claudePermissionMode: "default",
@@ -98,6 +121,7 @@ export const DEFAULT_SETTINGS: Settings = {
   claudeContinue: false,
   claudeVerbose: false,
   claudeExtraFlags: "",
+  claudeChatUi: true,
 };
 
 export type SidebarView = "explorer" | "scm";
@@ -150,6 +174,12 @@ interface AppState {
   showSettings: boolean;
   showSidebar: boolean;
   showTerminal: boolean;
+  showAbout: boolean;
+  terminalRestart: number; // bump to start a fresh shell in the active project
+  // Live status of the active project's Claude session, surfaced so the activity
+  // bar can show a running/busy indicator even when the panel is closed.
+  claudeRunning: boolean;
+  claudeBusy: boolean;
   splitView: boolean;
   splitFileId: string | null;
   splitWidth: number;
@@ -177,6 +207,7 @@ interface AppState {
   setSplitWidth: (w: number) => void;
   dismissWelcome: () => void;
   updateProject: (id: string, patch: Partial<Project>) => void;
+  removeProject: (id: string) => void;
   markSaved: (id: string) => void;
   addProject: (p: Project) => void;
   setActiveProject: (id: string) => void;
@@ -184,6 +215,8 @@ interface AppState {
   closeFile: (id: string) => void;
   setActiveFile: (id: string) => void;
   updateFileContent: (id: string, content: string) => void;
+  newTerminal: () => void; // open the terminal and start a fresh shell
+  setClaudeStatus: (running: boolean, busy: boolean) => void;
   toggle: (
     key:
       | "showPreview"
@@ -191,6 +224,7 @@ interface AppState {
       | "showSettings"
       | "showSidebar"
       | "showTerminal"
+      | "showAbout"
       | "splitView"
   ) => void;
 }
@@ -210,6 +244,10 @@ export const useStore = create<AppState>()(
       showSettings: false,
       showSidebar: true,
       showTerminal: false,
+      showAbout: false,
+      terminalRestart: 0,
+      claudeRunning: false,
+      claudeBusy: false,
       splitView: false,
       splitFileId: null,
       splitWidth: 560,
@@ -254,6 +292,36 @@ export const useStore = create<AppState>()(
             p.id === id ? { ...p, ...patch } : p
           ),
         })),
+
+      removeProject: (id) =>
+        set((s) => {
+          const remaining = s.projects.filter((p) => p.id !== id);
+          // Drop the removed project's saved tabs so it doesn't linger in memory
+          // or get restored if a folder with the same id is re-added later.
+          const { [id]: _gone, ...sessions } = s.sessions;
+          const warmProjectIds = s.warmProjectIds.filter((pid) => pid !== id);
+
+          // Removing a background project: nothing else to touch.
+          if (s.activeProjectId !== id) {
+            return { projects: remaining, sessions, warmProjectIds };
+          }
+
+          // Removing the *active* project: switch to the next remaining one and
+          // restore its tabs, otherwise the editor keeps showing the deleted
+          // project's files. May be null if the user removed the last project.
+          const nextId = remaining[0]?.id ?? null;
+          const restored =
+            (nextId && sessions[nextId]) || { openFiles: [], activeFileId: null };
+          return {
+            projects: remaining,
+            sessions,
+            warmProjectIds: nextId ? bumpWarm(warmProjectIds, nextId) : warmProjectIds,
+            activeProjectId: nextId,
+            openFiles: restored.openFiles,
+            activeFileId: restored.activeFileId,
+            splitFileId: null,
+          };
+        }),
 
       markSaved: (id) =>
         set((s) => ({
@@ -326,6 +394,18 @@ export const useStore = create<AppState>()(
           ),
         })),
 
+      // Reveal the terminal panel and bump the restart counter so the active
+      // project's shell is torn down and respawned fresh (see TerminalPanel).
+      newTerminal: () =>
+        set((s) => ({ showTerminal: true, terminalRestart: s.terminalRestart + 1 })),
+
+      setClaudeStatus: (running, busy) =>
+        set((s) =>
+          s.claudeRunning === running && s.claudeBusy === busy
+            ? {}
+            : { claudeRunning: running, claudeBusy: busy }
+        ),
+
       toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<AppState>),
     }),
     {
@@ -369,6 +449,8 @@ export const useStore = create<AppState>()(
           // Never restore a mid-switch overlay state from disk.
           switching: false,
           pendingProjectId: null,
+          // Transient modal — don't reopen the About dialog on launch.
+          showAbout: false,
           // Re-validated against the token at startup (App), so start blank.
           accountEmail: null,
         };
@@ -392,4 +474,10 @@ export function syncAppearance(settings: Settings) {
   root.style.setProperty("--app-font", settings.fontFamily);
   root.style.setProperty("--editor-font", settings.editorFontFamily);
   root.style.setProperty("--app-font-size", `${settings.fontSize}px`);
+  root.style.setProperty("--editor-font-size", `${settings.editorFontSize}px`);
+  root.style.setProperty("--editor-line-height", `${settings.lineHeight}`);
+
+  // Rounded-panel mode: a body class drives the CSS that insets the workspace
+  // panels and rounds them so they read as one cohesive set of cards.
+  document.body.classList.toggle("rounded-ui", settings.roundedCorners);
 }
