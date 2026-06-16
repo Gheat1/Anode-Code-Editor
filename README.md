@@ -44,7 +44,7 @@ npm run app:build      # = tauri build
 ```
 
 The version comes from `src-tauri/tauri.conf.json` → `"version"` (currently
-`1.2.2`); bump it there plus `package.json` and `Cargo.toml` for each release.
+`1.3.2`); bump it there plus `package.json` and `Cargo.toml` for each release.
 
 ### Windows
 **Prereqs:** Rust, the MSVC C++ Build Tools, Node. WebView2 ships with Windows 11.
@@ -52,7 +52,7 @@ The version comes from `src-tauri/tauri.conf.json` → `"version"` (currently
 ```powershell
 npm run app:build
 ```
-Produces `nsis/Anode_1.2.2_x64-setup.exe` (and an `.msi`). The official Windows
+Produces `nsis/Anode_1.3.2_x64-setup.exe` (and an `.msi`). The official Windows
 download is the release **`Anode.exe`** — rename the setup exe and attach it to
 the GitHub Release. First run shows a SmartScreen "unknown publisher" prompt
 (unsigned) → **More info → Run anyway**.
@@ -68,7 +68,7 @@ sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
 npm run app:build
 ```
 Produces `deb/*.deb`, `appimage/*.AppImage`, and `rpm/*.rpm`. The AppImage is
-portable: `chmod +x Anode_1.2.2_amd64.AppImage && ./Anode_1.2.2_amd64.AppImage`.
+portable: `chmod +x Anode_1.3.2_amd64.AppImage && ./Anode_1.3.2_amd64.AppImage`.
 A compositor is needed for the transparent rounded corners (standard on
 GNOME/KDE).
 
@@ -78,7 +78,7 @@ GNOME/KDE).
 ```bash
 npm run app:build
 ```
-Produces `dmg/Anode_1.2.2_aarch64.dmg` and `macos/Anode.app`.
+Produces `dmg/Anode_1.3.2_aarch64.dmg` and `macos/Anode.app`.
 
 > **No Apple Developer account?** That's fine — the build just isn't signed or
 > notarized, so macOS Gatekeeper warns on first open. See **Installing on macOS**

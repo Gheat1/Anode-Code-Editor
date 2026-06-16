@@ -23,7 +23,9 @@ function FsEntry({ entry, depth }: { entry: DirEntry; depth: number }) {
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<DirEntry[] | null>(null);
   const openFile = useStore((s) => s.openFile);
-  const activeFileId = useStore((s) => s.activeFileId);
+  // Boolean selector: only the rows whose active-ness changes re-render, not the
+  // whole tree, when you open a file.
+  const active = useStore((s) => s.activeFileId === entry.path);
   const filter = useVisibleFilter();
 
   async function onClick() {
@@ -57,7 +59,7 @@ function FsEntry({ entry, depth }: { entry: DirEntry; depth: number }) {
   return (
     <div>
       <div
-        className={`tree-row ${activeFileId === entry.path ? "active" : ""}`}
+        className={`tree-row ${active ? "active" : ""}`}
         style={{ paddingLeft: 8 + depth * 12 }}
         onClick={onClick}
       >

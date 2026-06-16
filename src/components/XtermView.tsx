@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import "@xterm/xterm/css/xterm.css";
 import { pty, onPtyOutput, onPtyExit, inTauri } from "../lib/tauri";
 
@@ -20,10 +21,11 @@ export function XtermView({
   onStatus?: (status: "running" | "exited") => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  // Read the latest args at (re)start time without forcing a remount when the
-  // array identity changes — flags apply on the next session.
+  // Read the latest args/onStatus at run time so they don't force a remount.
   const argsRef = useRef(args);
   argsRef.current = args;
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
 
   useEffect(() => {
     if (!hostRef.current || !inTauri) return;
@@ -45,41 +47,74 @@ export function XtermView({
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(hostRef.current);
+    // GPU-accelerated rendering so heavy TUI output (Claude redraws) doesn't
+    // thrash the main thread. Falls back to the canvas renderer if WebGL is
+    // unavailable or the context is lost.
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch {
+      /* no WebGL — canvas fallback */
+    }
     fit.fit();
 
+    // Listeners are registered async; if we unmount before they resolve we must
+    // still unsubscribe them — otherwise they leak and keep writing to a dead
+    // terminal on every PTY event. `track` handles that race.
     let disposed = false;
-    let unsubOut: (() => void) | undefined;
-    let unsubExit: (() => void) | undefined;
+    const unsubs: Array<() => void> = [];
+    const track = (u: () => void) => {
+      if (disposed) u();
+      else unsubs.push(u);
+    };
 
     (async () => {
-      unsubOut = await onPtyOutput((sid, chunk) => {
-        if (sid === id) term.write(chunk);
-      });
-      unsubExit = await onPtyExit((sid) => {
-        if (sid === id) {
-          term.write("\r\n\x1b[2m[process exited]\x1b[0m\r\n");
-          onStatus?.("exited");
-        }
-      });
+      track(
+        await onPtyOutput((sid, chunk) => {
+          if (!disposed && sid === id) term.write(chunk);
+        })
+      );
+      track(
+        await onPtyExit((sid) => {
+          if (!disposed && sid === id) {
+            term.write("\r\n\x1b[2m[process exited]\x1b[0m\r\n");
+            onStatusRef.current?.("exited");
+          }
+        })
+      );
       if (!disposed) {
-        await pty.start(id, program, argsRef.current, cwd, term.cols, term.rows);
-        onStatus?.("running");
+        try {
+          await pty.start(id, program, argsRef.current, cwd, term.cols, term.rows);
+          onStatusRef.current?.("running");
+        } catch {
+          /* backend unavailable — ignore */
+        }
       }
     })();
 
-    const onData = term.onData((d) => pty.write(id, d));
+    const onData = term.onData((d) => {
+      if (!disposed) pty.write(id, d);
+    });
+
+    // Debounce resize so layout changes don't thrash fit()/resize.
+    let raf = 0;
     const ro = new ResizeObserver(() => {
-      fit.fit();
-      pty.resize(id, term.cols, term.rows);
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        if (disposed) return;
+        fit.fit();
+        pty.resize(id, term.cols, term.rows);
+      });
     });
     ro.observe(hostRef.current);
 
     return () => {
       disposed = true;
+      cancelAnimationFrame(raf);
       onData.dispose();
       ro.disconnect();
-      unsubOut?.();
-      unsubExit?.();
+      unsubs.forEach((u) => u());
       pty.kill(id);
       term.dispose();
     };
