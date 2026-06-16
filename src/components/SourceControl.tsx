@@ -13,6 +13,12 @@ import {
 } from "../lib/tauri";
 import { languageName } from "../editor/setup";
 
+// "git@github.com:user/repo.git" / "https://github.com/user/repo.git" -> "user/repo".
+function remoteShort(remote: string): string {
+  const m = remote.match(/[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+  return m ? m[1] : "origin";
+}
+
 // Maps a porcelain status code to a single-letter badge + color role.
 function statusBadge(code: string): { letter: string; cls: string; title: string } {
   const c = code.replace(/\s/g, "");
@@ -127,7 +133,8 @@ export function SourceControl() {
     if (!path) return;
     await run("sync", async () => {
       if ((info?.behind ?? 0) > 0) await git.pull(path);
-      await git.push(path);
+      if (info?.upstream) await git.push(path);
+      else await git.publish(path); // first push: set the upstream
     });
   }
 
@@ -187,6 +194,11 @@ export function SourceControl() {
 
   const isRepo = info?.is_repo;
   const files = info?.files ?? [];
+  const ahead = info?.ahead ?? 0;
+  const behind = info?.behind ?? 0;
+  const upToDate = !!info?.upstream && ahead === 0 && behind === 0;
+  const publishMode = !!info?.remote && !info?.upstream;
+  const syncDisabled = busy === "sync" || !info?.remote || upToDate;
 
   return (
     <div className="scm">
@@ -212,6 +224,35 @@ export function SourceControl() {
         </div>
       ) : (
         <>
+          <div className="scm-branchbar">
+            <Icon name="git" size={14} />
+            <span className="bb-branch">{info?.branch}</span>
+            {info?.remote && (
+              <>
+                <span className="bb-arrow">
+                  <Icon name="chevron" size={12} />
+                </span>
+                <span className="bb-remote">{remoteShort(info.remote)}</span>
+              </>
+            )}
+            <span className="bb-spacer" />
+            {behind > 0 && (
+              <span className="bb-count down" title={`${behind} to pull`}>
+                ↓{behind}
+              </span>
+            )}
+            {ahead > 0 && (
+              <span className="bb-count up" title={`${ahead} to push`}>
+                ↑{ahead}
+              </span>
+            )}
+            {upToDate && (
+              <span className="bb-ok" title="Up to date">
+                <Icon name="check" size={13} />
+              </span>
+            )}
+          </div>
+
           <div className="scm-commit">
             <textarea
               rows={2}
@@ -232,14 +273,24 @@ export function SourceControl() {
             </button>
             <button
               className="scm-btn full"
-              disabled={busy === "sync"}
+              disabled={syncDisabled}
               onClick={sync}
-              title={info?.remote || "No remote configured"}
+              title={
+                !info?.remote
+                  ? "No remote configured"
+                  : upToDate
+                  ? "Up to date"
+                  : info?.remote ?? ""
+              }
             >
               <Icon name="sync" size={15} />
               {busy === "sync"
                 ? "Syncing…"
-                : `Sync${info && (info.ahead || info.behind) ? ` ↓${info.behind} ↑${info.ahead}` : ""}`}
+                : upToDate
+                ? "Up to date"
+                : publishMode
+                ? "Publish branch"
+                : `Sync${ahead || behind ? ` ↓${behind} ↑${ahead}` : ""}`}
             </button>
           </div>
 

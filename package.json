@@ -1,9 +1,10 @@
 {
   "name": "anode",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.2.1",
   "type": "module",
-  "description": "Anode — a Claude-native code editor for Windows",
+  "description": "Anode - A Simple, Clean, Efficient Editor.",
+  "author": "Gheat",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

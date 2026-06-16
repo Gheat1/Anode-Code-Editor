@@ -3,7 +3,6 @@ import { Icon, IconName } from "./Icon";
 import { ResizeHandle } from "./ResizeHandle";
 import { SourceControl } from "./SourceControl";
 import { useStore } from "../state/store";
-import { WELCOME_FILES } from "../data/welcome";
 import { fs, DirEntry } from "../lib/tauri";
 import { languageName } from "../editor/setup";
 
@@ -13,12 +12,19 @@ function iconFor(name: string): IconName {
   return "file";
 }
 
-// ---- Real filesystem tree (lazy: folders load children on expand) ---------
+// Hide the .claude folder unless the user opts to show it.
+function useVisibleFilter() {
+  const showClaude = useStore((s) => s.settings.showClaudeFolder);
+  return (entries: DirEntry[]) =>
+    showClaude ? entries : entries.filter((e) => e.name !== ".claude");
+}
+
 function FsEntry({ entry, depth }: { entry: DirEntry; depth: number }) {
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<DirEntry[] | null>(null);
   const openFile = useStore((s) => s.openFile);
   const activeFileId = useStore((s) => s.activeFileId);
+  const filter = useVisibleFilter();
 
   async function onClick() {
     if (entry.is_dir) {
@@ -70,7 +76,7 @@ function FsEntry({ entry, depth }: { entry: DirEntry; depth: number }) {
       </div>
       {open && children && (
         <div className="tree-children">
-          {children.map((c) => (
+          {filter(children).map((c) => (
             <FsEntry key={c.path} entry={c} depth={depth + 1} />
           ))}
         </div>
@@ -81,6 +87,7 @@ function FsEntry({ entry, depth }: { entry: DirEntry; depth: number }) {
 
 function FsTree({ rootPath }: { rootPath: string }) {
   const [entries, setEntries] = useState<DirEntry[] | null>(null);
+  const filter = useVisibleFilter();
   useEffect(() => {
     fs.readDir(rootPath)
       .then(setEntries)
@@ -88,37 +95,12 @@ function FsTree({ rootPath }: { rootPath: string }) {
   }, [rootPath]);
 
   if (!entries) return <div className="tree-hint">Loading…</div>;
-  if (entries.length === 0) return <div className="tree-hint">Empty folder</div>;
+  const visible = filter(entries);
+  if (visible.length === 0) return <div className="tree-hint">Empty folder</div>;
   return (
     <>
-      {entries.map((e) => (
+      {visible.map((e) => (
         <FsEntry key={e.path} entry={e} depth={0} />
-      ))}
-    </>
-  );
-}
-
-// ---- Demo tree (used when the active project has no real path) -------------
-function DemoTree() {
-  const openFile = useStore((s) => s.openFile);
-  const activeFileId = useStore((s) => s.activeFileId);
-  const welcomeDismissed = useStore((s) => s.welcomeDismissed);
-  if (welcomeDismissed) {
-    return <div className="tree-hint">Add a folder from the left rail to start.</div>;
-  }
-  return (
-    <>
-      {Object.values(WELCOME_FILES).map((f) => (
-        <div
-          key={f.id}
-          className={`tree-row ${activeFileId === f.id ? "active" : ""}`}
-          style={{ paddingLeft: 8 }}
-          onClick={() => openFile(f)}
-        >
-          <span style={{ width: 13 }} />
-          <Icon name={iconFor(f.name)} size={16} />
-          <span>{f.name}</span>
-        </div>
       ))}
     </>
   );
@@ -133,9 +115,13 @@ function ExplorerView() {
       <div className="sb-head">
         <span>{project?.name ?? "Explorer"}</span>
       </div>
-      <div className="file-tree">
-        {project?.path ? <FsTree rootPath={project.path} /> : <DemoTree />}
-      </div>
+      {project?.path ? (
+        <div className="file-tree">
+          <FsTree rootPath={project.path} />
+        </div>
+      ) : (
+        <div className="tree-hint">Add a folder from the left rail to start.</div>
+      )}
     </>
   );
 }

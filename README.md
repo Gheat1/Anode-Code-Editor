@@ -33,11 +33,84 @@ Frontend-only preview (no native features — Claude/git/blur are stubbed):
 npm run dev          # open http://localhost:1420 in a browser
 ```
 
-Production installer:
+## Build for your own OS
+
+Tauri does **not** cross-compile — build on the OS you want to run on. Every
+build is the same two steps; output lands in `src-tauri/target/release/bundle/`.
+
+```bash
+npm install
+npm run app:build      # = tauri build
+```
+
+The version comes from `src-tauri/tauri.conf.json` → `"version"` (currently
+`1.2.1`); bump it there plus `package.json` and `Cargo.toml` for each release.
+
+### Windows
+**Prereqs:** Rust, the MSVC C++ Build Tools, Node. WebView2 ships with Windows 11.
 
 ```powershell
-npm run app:build    # produces an NSIS .exe under src-tauri/target/release/bundle
+npm run app:build
 ```
+Produces `nsis/Anode_1.2.1_x64-setup.exe` (and an `.msi`). The official Windows
+download is the release **`Anode.exe`** — rename the setup exe and attach it to
+the GitHub Release. First run shows a SmartScreen "unknown publisher" prompt
+(unsigned) → **More info → Run anyway**.
+
+### Linux
+**Prereqs:**
+```bash
+sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+  libssl-dev build-essential curl
+# + Rust (rustup) and Node 20
+```
+```bash
+npm run app:build
+```
+Produces `deb/*.deb`, `appimage/*.AppImage`, and `rpm/*.rpm`. The AppImage is
+portable: `chmod +x Anode_1.2.1_amd64.AppImage && ./Anode_1.2.1_amd64.AppImage`.
+A compositor is needed for the transparent rounded corners (standard on
+GNOME/KDE).
+
+### macOS
+**Prereqs:** Rust, Xcode Command Line Tools (`xcode-select --install`), Node.
+
+```bash
+npm run app:build
+```
+Produces `dmg/Anode_1.2.1_aarch64.dmg` and `macos/Anode.app`.
+
+> **No Apple Developer account?** That's fine — the build just isn't signed or
+> notarized, so macOS Gatekeeper warns on first open. See **Installing on macOS**
+> below for how to get past it. (Signing requires the $99/yr Apple program; it's
+> only needed to ship a "just works" double-click install to other people.)
+
+## Installing
+
+### Windows
+Download `Anode.exe` from Releases and run it. On the SmartScreen prompt choose
+**More info → Run anyway** (it's unsigned, not unsafe).
+
+### macOS (unsigned build)
+Because the app isn't notarized, macOS blocks it on first launch. Get past it one
+of these ways:
+
+- **Right-click method:** right-click `Anode.app` → **Open** → **Open** in the
+  dialog. (Only needed once.)
+- **Or strip the quarantine flag** in Terminal:
+  ```bash
+  xattr -cr /Applications/Anode.app
+  ```
+  Then open it normally. If you see *"Anode is damaged"*, that's the same
+  quarantine issue — the `xattr -cr` command fixes it.
+
+### Linux
+Install the `.deb`/`.rpm` with your package manager, or just run the `.AppImage`
+directly.
+
+### Cross-platform notes
+- The acrylic **blur is Windows-only**; macOS/Linux use solid (exact) surfaces.
+- Regenerate icons after changing the logo: `npm run tauri -- icon path/to/1024.png`.
 
 ## Where things live
 

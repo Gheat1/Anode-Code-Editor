@@ -5,15 +5,13 @@ import { MarkdownPreview } from "./MarkdownPreview";
 import { TerminalPanel } from "./TerminalPanel";
 import { ResizeHandle } from "./ResizeHandle";
 import { useStore } from "../state/store";
-import { WELCOME_FILES } from "../data/welcome";
+import { openFolderAsProject } from "../lib/actions";
 
 export function EditorArea() {
   const openFiles = useStore((s) => s.openFiles);
   const activeFileId = useStore((s) => s.activeFileId);
   const setActiveFile = useStore((s) => s.setActiveFile);
   const closeFile = useStore((s) => s.closeFile);
-  const openFile = useStore((s) => s.openFile);
-  const dismissWelcome = useStore((s) => s.dismissWelcome);
   const showPreview = useStore((s) => s.showPreview);
   const showTerminal = useStore((s) => s.showTerminal);
   const splitView = useStore((s) => s.splitView);
@@ -27,11 +25,6 @@ export function EditorArea() {
   const isMarkdown = activeFile?.name.endsWith(".md");
   const rightId = splitFileId ?? activeFileId;
 
-  function onCloseTab(id: string) {
-    if (id in WELCOME_FILES) dismissWelcome();
-    closeFile(id);
-  }
-
   return (
     <section className="editor-area">
       {openFiles.length === 0 ? (
@@ -40,11 +33,8 @@ export function EditorArea() {
             <Icon name="code" size={40} />
             <div>No file open</div>
             <div style={{ fontSize: 13 }}>
-              <button
-                style={{ color: "var(--accent)" }}
-                onClick={() => openFile(WELCOME_FILES["welcome.md"])}
-              >
-                Open welcome.md
+              <button style={{ color: "var(--accent)" }} onClick={openFolderAsProject}>
+                Open a folder
               </button>{" "}
               or pick a file from the explorer.
             </div>
@@ -69,7 +59,7 @@ export function EditorArea() {
                       className="close"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onCloseTab(f.id);
+                        closeFile(f.id);
                       }}
                     >
                       <Icon name="close" size={13} />

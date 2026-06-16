@@ -65,6 +65,7 @@ export interface GitInfo {
   ahead: number;
   behind: number;
   remote: string | null;
+  upstream: boolean;
 }
 
 export interface Commit {
@@ -83,6 +84,7 @@ export const git = {
   status: (path: string) => invoke<GitStatus>("git_status", { path }),
   pull: (path: string) => invoke<string>("git_pull", { path }),
   push: (path: string) => invoke<string>("git_push", { path }),
+  publish: (path: string) => invoke<string>("git_publish", { path }),
   commitAll: (path: string, message: string) =>
     invoke<string>("git_commit_all", { path, message }),
 };
@@ -116,10 +118,11 @@ export const pty = {
   start: (
     id: string,
     program: string | null,
+    args: string[] | null,
     cwd: string | null,
     cols: number,
     rows: number
-  ) => invoke<void>("pty_start", { id, program, cwd, cols, rows }),
+  ) => invoke<void>("pty_start", { id, program, args, cwd, cols, rows }),
   write: (id: string, data: string) => invoke<void>("pty_write", { id, data }),
   resize: (id: string, cols: number, rows: number) =>
     invoke<void>("pty_resize", { id, cols, rows }),

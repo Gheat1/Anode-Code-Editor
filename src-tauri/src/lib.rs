@@ -197,6 +197,7 @@ struct GitInfo {
     ahead: u32,
     behind: u32,
     remote: Option<String>,
+    upstream: bool, // whether the branch tracks an upstream (@{u} exists)
 }
 
 #[tauri::command]
@@ -216,6 +217,7 @@ fn git_info(path: String) -> Result<GitInfo, String> {
             ahead: 0,
             behind: 0,
             remote: None,
+            upstream: false,
         });
     }
 
@@ -240,12 +242,22 @@ fn git_info(path: String) -> Result<GitInfo, String> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
+    let upstream = git(
+        &path,
+        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+    )
+    .is_ok();
+
     let (mut ahead, mut behind) = (0u32, 0u32);
-    if let Ok(counts) = git(&path, &["rev-list", "--left-right", "--count", "@{u}...HEAD"]) {
-        let parts: Vec<&str> = counts.split_whitespace().collect();
-        if parts.len() == 2 {
-            behind = parts[0].parse().unwrap_or(0);
-            ahead = parts[1].parse().unwrap_or(0);
+    if upstream {
+        if let Ok(counts) =
+            git(&path, &["rev-list", "--left-right", "--count", "@{u}...HEAD"])
+        {
+            let parts: Vec<&str> = counts.split_whitespace().collect();
+            if parts.len() == 2 {
+                behind = parts[0].parse().unwrap_or(0);
+                ahead = parts[1].parse().unwrap_or(0);
+            }
         }
     }
 
@@ -257,6 +269,7 @@ fn git_info(path: String) -> Result<GitInfo, String> {
         ahead,
         behind,
         remote,
+        upstream,
     })
 }
 
@@ -300,6 +313,12 @@ fn git_pull(path: String) -> Result<String, String> {
 #[tauri::command]
 fn git_push(path: String) -> Result<String, String> {
     git(&path, &["push"])
+}
+
+// First push for a branch with no upstream yet: pushes to origin and sets it.
+#[tauri::command]
+fn git_publish(path: String) -> Result<String, String> {
+    git(&path, &["push", "-u", "origin", "HEAD"])
 }
 
 #[tauri::command]
@@ -468,18 +487,13 @@ fn github_logout(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        Command::new("cmd")
-            .args(["/c", "start", "", &url])
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = url;
-    }
-    Ok(())
+    #[cfg(target_os = "windows")]
+    let res = Command::new("cmd").args(["/c", "start", "", &url]).spawn();
+    #[cfg(target_os = "macos")]
+    let res = Command::new("open").arg(&url).spawn();
+    #[cfg(target_os = "linux")]
+    let res = Command::new("xdg-open").arg(&url).spawn();
+    res.map(|_| ()).map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -511,11 +525,12 @@ fn kill_session(mgr: &PtyManager, id: &str) {
     }
 }
 
-// `program`: Some("claude") runs Claude Code; anything else opens a shell.
-fn build_command(program: Option<&str>) -> CommandBuilder {
+// `program`: Some("claude") runs Claude Code (with the given flags); anything
+// else opens a shell.
+fn build_command(program: Option<&str>, args: &[String]) -> CommandBuilder {
     match program {
         Some("claude") => {
-            if cfg!(windows) {
+            let mut c = if cfg!(windows) {
                 // `claude` is usually a .cmd shim, so go through cmd.exe (PATHEXT).
                 let mut c = CommandBuilder::new("cmd");
                 c.arg("/c");
@@ -523,7 +538,11 @@ fn build_command(program: Option<&str>) -> CommandBuilder {
                 c
             } else {
                 CommandBuilder::new("claude")
+            };
+            for a in args {
+                c.arg(a);
             }
+            c
         }
         _ => {
             if cfg!(windows) {
@@ -541,6 +560,7 @@ fn pty_start(
     mgr: State<PtyManager>,
     id: String,
     program: Option<String>,
+    args: Option<Vec<String>>,
     cwd: Option<String>,
     cols: u16,
     rows: u16,
@@ -557,7 +577,7 @@ fn pty_start(
         })
         .map_err(|e| e.to_string())?;
 
-    let mut cmd = build_command(program.as_deref());
+    let mut cmd = build_command(program.as_deref(), &args.unwrap_or_default());
     if let Some(dir) = cwd {
         if !dir.is_empty() {
             cmd.cwd(dir);
@@ -668,6 +688,7 @@ pub fn run() {
             git_log,
             git_pull,
             git_push,
+            git_publish,
             git_commit_all,
             github_device_start,
             github_device_poll,

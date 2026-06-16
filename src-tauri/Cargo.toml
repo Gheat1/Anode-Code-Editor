@@ -1,8 +1,8 @@
 [package]
 name = "anode"
-version = "0.1.0"
-description = "Anode — a Claude-native code editor"
-authors = ["you"]
+version = "1.2.1"
+description = "Anode - A Simple, Clean, Efficient Editor."
+authors = ["Gheat"]
 edition = "2021"
 
 [lib]

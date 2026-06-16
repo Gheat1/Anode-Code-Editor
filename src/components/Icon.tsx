@@ -31,7 +31,10 @@ export type IconName =
   | "logout"
   | "save"
   | "terminal"
-  | "split";
+  | "split"
+  | "palette"
+  | "type"
+  | "sliders";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
@@ -136,6 +139,29 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <path d="M12 4v16" />
+    </>
+  ),
+  palette: (
+    <>
+      <path d="M12 3a9 9 0 1 0 0 18c1 0 1.7-.8 1.7-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.1 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z" />
+      <circle cx="7.5" cy="11" r="1" />
+      <circle cx="12" cy="8" r="1" />
+      <circle cx="16.5" cy="11" r="1" />
+    </>
+  ),
+  type: (
+    <>
+      <path d="M5 6V5h14v1" />
+      <path d="M12 5v14" />
+      <path d="M9 19h6" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+      <circle cx="9" cy="6" r="2" />
+      <circle cx="15" cy="12" r="2" />
+      <circle cx="7" cy="18" r="2" />
     </>
   ),
 };

@@ -22,6 +22,15 @@ export interface Settings {
   blurEnabled: boolean;
   smoothCaret: boolean;
   lineNumbers: boolean;
+  showClaudeFolder: boolean; // show the .claude folder in the explorer
+
+  // Claude Code launch flags
+  claudeSkipPermissions: boolean; // --dangerously-skip-permissions
+  claudePermissionMode: "default" | "acceptEdits" | "plan"; // --permission-mode
+  claudeModel: string; // --model (blank = CLI default)
+  claudeContinue: boolean; // --continue
+  claudeVerbose: boolean; // --verbose
+  claudeExtraFlags: string; // appended raw
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -36,6 +45,13 @@ export const DEFAULT_SETTINGS: Settings = {
   blurEnabled: true,
   smoothCaret: true,
   lineNumbers: true,
+  showClaudeFolder: false,
+  claudeSkipPermissions: false,
+  claudePermissionMode: "default",
+  claudeModel: "",
+  claudeContinue: false,
+  claudeVerbose: false,
+  claudeExtraFlags: "",
 };
 
 export type SidebarView = "explorer" | "scm";
@@ -109,10 +125,8 @@ export const useStore = create<AppState>()(
   persist(
     (set) => ({
       settings: DEFAULT_SETTINGS,
-      projects: [
-        { id: "demo", name: "Welcome", path: "", color: "#7c8cff" },
-      ],
-      activeProjectId: "demo",
+      projects: [{ id: "home", name: "Home", path: "", color: "#7c8cff" }],
+      activeProjectId: "home",
       openFiles: [],
       activeFileId: null,
       showPreview: false,
@@ -188,8 +202,32 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "anode-state",
-      // Deep-merge settings so newly added fields (e.g. darkness, savedPalettes)
-      // pick up their defaults for users with older persisted state.
+      version: 1,
+      // v1: drop the legacy "Welcome" demo project and welcome/scratch files
+      // that lingered in saved state after they were removed from the app.
+      migrate: (persisted, version) => {
+        const p = persisted as any;
+        if (version < 1 && p && typeof p === "object") {
+          if (Array.isArray(p.openFiles)) {
+            p.openFiles = p.openFiles.filter(
+              (f: any) => f?.id !== "welcome.md" && f?.id !== "scratch.ts"
+            );
+          }
+          if (Array.isArray(p.projects)) {
+            p.projects = p.projects.filter((pr: any) => pr?.id !== "demo");
+            if (p.projects.length === 0) {
+              p.projects = [{ id: "home", name: "Home", path: "", color: "#7c8cff" }];
+            }
+          }
+          if (p.activeProjectId === "demo") p.activeProjectId = "home";
+          if (p.activeFileId === "welcome.md" || p.activeFileId === "scratch.ts") {
+            p.activeFileId = p.openFiles?.[0]?.id ?? null;
+          }
+        }
+        return p;
+      },
+      // Deep-merge settings so newly added fields pick up their defaults for
+      // users with older persisted state.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<AppState>;
         return {

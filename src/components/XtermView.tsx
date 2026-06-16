@@ -9,13 +9,21 @@ import { pty, onPtyOutput, onPtyExit, inTauri } from "../lib/tauri";
 export function XtermView({
   id,
   program,
+  args = null,
   cwd,
+  onStatus,
 }: {
   id: string;
   program: string | null;
+  args?: string[] | null;
   cwd: string | null;
+  onStatus?: (status: "running" | "exited") => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  // Read the latest args at (re)start time without forcing a remount when the
+  // array identity changes — flags apply on the next session.
+  const argsRef = useRef(args);
+  argsRef.current = args;
 
   useEffect(() => {
     if (!hostRef.current || !inTauri) return;
@@ -48,10 +56,15 @@ export function XtermView({
         if (sid === id) term.write(chunk);
       });
       unsubExit = await onPtyExit((sid) => {
-        if (sid === id)
+        if (sid === id) {
           term.write("\r\n\x1b[2m[process exited]\x1b[0m\r\n");
+          onStatus?.("exited");
+        }
       });
-      if (!disposed) await pty.start(id, program, cwd, term.cols, term.rows);
+      if (!disposed) {
+        await pty.start(id, program, argsRef.current, cwd, term.cols, term.rows);
+        onStatus?.("running");
+      }
     })();
 
     const onData = term.onData((d) => pty.write(id, d));
