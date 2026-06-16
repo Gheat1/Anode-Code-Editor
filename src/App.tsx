@@ -37,16 +37,19 @@ export default function App() {
   }, [settings]);
 
   // Masked project switch: the overlay is already painted (switching=true), so
-  // defer the heavy remount to the next frame, then reveal once it settles. The
-  // reveal timer fires after the (possibly janky) re-render completes, so the
-  // grey overlay covers the whole freeze regardless of how long it takes.
+  // defer the swap to the next frame, then reveal as soon as it has rendered.
+  // Warm projects keep their Claude/terminal sessions alive (see
+  // WarmTerminals), so the swap is just a re-render — no PTY reboot — and the
+  // overlay only needs to cover that, not a 15s session boot.
   useEffect(() => {
     if (!pendingProjectId) return;
     const id = pendingProjectId;
     const raf = requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         setActiveProject(id);
-        window.setTimeout(finishSwitch, 550);
+        requestAnimationFrame(() =>
+          requestAnimationFrame(finishSwitch)
+        );
       })
     );
     return () => cancelAnimationFrame(raf);

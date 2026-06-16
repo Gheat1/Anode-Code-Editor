@@ -13,7 +13,7 @@ need; everything here reflects the current state of the repo.
 code editor for Windows, macOS, and Linux, built **from scratch (not on VS
 Code)**.
 
-- **Version:** 1.3.3 · **Author/Publisher:** Gheat · **Copyright:** © 2026 Gheat
+- **Version:** 1.3.4 · **Author/Publisher:** Gheat · **Copyright:** © 2026 Gheat
 - **Bundle identifier:** `com.anode.editor`
 - **Primary platform:** Windows (acrylic blur, DWM rounded corners). macOS/Linux
   are fully supported with graceful fallbacks.
@@ -217,7 +217,10 @@ in `localStorage`. Persist `version: 1`.
 `activeFileId`, plus UI flags: `showPreview`, `showClaude`, `showSettings`,
 `showSidebar`, `showTerminal`, `splitView`, `splitFileId`, `splitWidth`,
 `welcomeDismissed`, `sidebarView` ("explorer"|"scm"), `sidebarWidth`,
-`claudeWidth`, `terminalHeight`.
+`claudeWidth`, `terminalHeight`, plus `sessions` (per-project open files) and
+`warmProjectIds` (LRU of projects whose Claude/terminal PTYs stay warm — see
+§11; reset to just the active project on rehydrate since PTYs don't survive a
+restart).
 
 `Project = { id, name, path, color, icon? }` — `icon` is an emoji char **or** a
 `data:` URL (uploaded png/svg). The seed project is `{id:"home", name:"Home",
@@ -313,7 +316,17 @@ at setup, and registers the command handler.
 - `read_image_data_url(path) -> String` — base64-encodes an image to a `data:`
   URL (mime from extension); used for project icon upload.
 
-### Git (shells out to system `git` via `Command`, reusing the user's credential manager)
+### Process spawning — always via `sys_command(program)`
+**Every** child process (git, gh, the `cmd /c start` browser shim) is built with
+`sys_command`, which on Windows sets `CREATE_NO_WINDOW` (`0x0800_0000`). A plain
+`Command::new` flashes a console window and steals focus on each spawn — and
+opening Source Control fires a dozen `git` subcommands, which previously filled
+the screen with flickering terminals and froze the app. **Never use
+`Command::new` directly; use `sys_command`.** The git/github commands are also
+`async` and run their blocking subprocess work via `run_blocking`
+(`tauri::async_runtime::spawn_blocking`) so they never block the UI thread.
+
+### Git (shells out to system `git` via `sys_command`, reusing the user's credential manager)
 - `git_available() -> bool`
 - `git_init(path)`
 - `git_status(path) -> GitStatus{branch,dirty,files}` (used by TitleBar)
@@ -328,12 +341,15 @@ at setup, and registers the command handler.
   `ANODE_GITHUB_CLIENT_ID`.
 - `github_device_start() -> DeviceStart{user_code,verification_uri,device_code,interval}`
 - `github_device_poll(device_code) -> Option<String>` — `None` while pending,
-  `Some(login)` on success; stores the token and runs `gh auth login
-  --with-token` if `gh` is present.
-- `github_user() -> Option<String>` — identity from the stored token, else falls
-  back to `gh api user`.
+  `Some(login)` on success; stores the token **and the resolved login** and runs
+  `gh auth login --with-token` if `gh` is present.
+- `github_user() -> Option<String>` — verifies the stored token over the network;
+  **if that check fails (offline/rate-limited) it returns the remembered login**
+  so sign-in is sticky, then falls back to `gh api user`. (Previously a single
+  flaky network check would silently log you out.)
 - `github_logout()` — deletes the stored token.
-- Token is stored at `app_config_dir()/github.json`.
+- Token **and login** are stored at `app_config_dir()/github.json`
+  (`{ token, login }`).
 
 ### Misc
 - `open_url(url)` — opens in the default browser: `cmd /c start` (Windows),
@@ -350,7 +366,9 @@ state. A reader thread per session streams output.
   with payload `{id, chunk}`; exit emits **`pty://exit`** with the `id`.
 - `pty_write(id, data)`, `pty_resize(id, cols, rows)`, `pty_kill(id)`.
 
-PTY ids in use: **`"claude"`** (ClaudePanel) and **`"terminal"`** (TerminalPanel).
+PTY ids in use are **per project**: `"claude:<projectId>"` (ClaudePanel) and
+`"terminal:<projectId>"` (TerminalPanel), so each project keeps its own warm
+session (see `WarmTerminals.tsx` and §11).
 
 ### Capabilities (`capabilities/default.json`)
 `core:default`, window start-dragging/minimize/toggle-maximize/close,
@@ -423,8 +441,13 @@ the Rust `Serialize` structs exactly (snake_case fields: `is_dir`, `is_repo`,
   program={null}`. Vertically resizable (`ResizeHandle axis="y"`), opens in the
   active project's folder.
 
-Switching projects changes `cwd`, which remounts the XtermView and restarts the
-session in the new folder (expected behavior for both Claude and the terminal).
+Switching projects no longer reboots the session. **`WarmTerminals.tsx`** keeps
+a stack of `XtermView`s — one per recently-active project (an LRU of `WARM_CAP`,
+tracked in `warmProjectIds`) — mounted at once, showing only the active project's
+and `display:none`-ing the rest. So switching back to a warm project is instant
+(its `claude`/shell is still alive); the first visit to a project still pays the
+one-time CLI boot. Projects that fall out of the LRU unmount, killing their PTY
+to cap memory.
 
 ---
 
@@ -516,7 +539,7 @@ project's pathless state has nothing to write.
 
 ## 16. Build & release
 
-`tauri.conf.json` holds `version` (currently `1.3.3`), `productName` ("Anode"),
+`tauri.conf.json` holds `version` (currently `1.3.4`), `productName` ("Anode"),
 `identifier`, the frameless/transparent/centered window, and bundle metadata
 (`targets: "all"`, `publisher`/`copyright`, icon list incl. `.icns`/`.ico`).
 Bump the version in **all three**: `tauri.conf.json`, `package.json`,
@@ -596,8 +619,10 @@ matching `@codemirror/lang-*` dependency.
 - **Split panes editing the same file** don't live-sync between the two
   CodeMirror instances (separate docs); the store is the source of truth on
   change.
-- **Switching projects restarts** the Claude session and the terminal (they're
-  `cwd`-bound).
+- **Switching projects keeps sessions warm** (`WarmTerminals.tsx`): the last
+  `WARM_CAP` projects keep their `cwd`-bound Claude/terminal PTYs alive, so
+  switching back is instant. Only the **first** visit to a project (or one that
+  aged out of the warm LRU) pays the one-time CLI boot.
 - **GitHub sign-in needs network** and the baked-in client ID; push/pull also
   work via the system credential manager without signing in.
 - The persisted store can hold stale shape after big refactors — bump

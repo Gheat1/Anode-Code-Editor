@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { ResizeHandle } from "./ResizeHandle";
-import { XtermView } from "./XtermView";
+import { WarmTerminals } from "./WarmTerminals";
 import { useStore, Settings } from "../state/store";
 import { inTauri } from "../lib/tauri";
 
@@ -23,7 +23,6 @@ export function ClaudePanel() {
   const project = useStore((s) =>
     s.projects.find((p) => p.id === s.activeProjectId)
   );
-  const projectPath = project?.path || null;
   const settings = useStore((s) => s.settings);
   const toggle = useStore((s) => s.toggle);
   const claudeWidth = useStore((s) => s.claudeWidth);
@@ -58,7 +57,7 @@ export function ClaudePanel() {
         axis="x"
         side="left"
         value={claudeWidth}
-        min={300}
+        min={240}
         max={760}
         dir={-1}
         onChange={setClaudeWidth}
@@ -92,13 +91,12 @@ export function ClaudePanel() {
 
       {inTauri ? (
         <div className="cl-term">
-          <XtermView
-            key={sessionKey}
-            id="claude"
+          <WarmTerminals
+            idPrefix="claude"
             program="claude"
             args={claudeArgs(settings)}
-            cwd={projectPath}
-            onStatus={setStatus}
+            restartKey={sessionKey}
+            onActiveStatus={setStatus}
           />
         </div>
       ) : (

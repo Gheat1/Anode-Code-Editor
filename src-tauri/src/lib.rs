@@ -6,6 +6,35 @@ use std::process::Command;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, Window};
 
+// Spawn helper processes (git, gh, cmd) WITHOUT popping a console window on
+// Windows. A plain `Command` spawn flashes a console window and steals focus on
+// every call — and opening Source Control fires a dozen `git` subcommands, so
+// the screen filled with flickering terminals and the app froze. CREATE_NO_WINDOW
+// suppresses that. No-op on macOS/Linux.
+fn sys_command(program: &str) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
+// Run a blocking closure off the UI thread. Synchronous Tauri commands execute
+// on the main thread, so chaining several blocking `git` subprocess calls there
+// froze the window; this hands the work to a background thread and awaits it.
+async fn run_blocking<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 // ---------------------------------------------------------------------------
 // Rounded window corners (Windows 11). The window is frameless + transparent,
 // so Win11 won't round it automatically — we opt in via DWM so the acrylic
@@ -69,10 +98,17 @@ fn read_dir(path: String) -> Result<Vec<DirEntry>, String> {
         if matches!(name.as_str(), "node_modules" | "target" | ".git") {
             continue;
         }
+        // Use the file type the directory iterator already gave us (no extra
+        // stat syscall); only follow a symlink to classify it as dir/file.
+        let is_dir = match entry.file_type() {
+            Ok(ft) if ft.is_symlink() => p.is_dir(),
+            Ok(ft) => ft.is_dir(),
+            Err(_) => p.is_dir(),
+        };
         out.push(DirEntry {
             name,
             path: p.to_string_lossy().to_string(),
-            is_dir: p.is_dir(),
+            is_dir,
         });
     }
     out.sort_by(|a, b| {
@@ -117,7 +153,7 @@ fn read_image_data_url(path: String) -> Result<String, String> {
 // manager (no token juggling needed for push/pull against GitHub).
 // ---------------------------------------------------------------------------
 fn git(cwd: &str, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
+    let out = sys_command("git")
         .args(args)
         .current_dir(cwd)
         .output()
@@ -137,38 +173,48 @@ struct GitStatus {
 }
 
 #[tauri::command]
-fn git_status(path: String) -> Result<GitStatus, String> {
-    let branch = git(&path, &["rev-parse", "--abbrev-ref", "HEAD"])?
-        .trim()
-        .to_string();
-    let porcelain = git(&path, &["status", "--porcelain"])?;
-    let files: Vec<String> = porcelain
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect();
-    Ok(GitStatus {
-        branch,
-        dirty: !files.is_empty(),
-        files,
+async fn git_status(path: String) -> Result<GitStatus, String> {
+    run_blocking(move || {
+        let branch = git(&path, &["rev-parse", "--abbrev-ref", "HEAD"])?
+            .trim()
+            .to_string();
+        let porcelain = git(&path, &["status", "--porcelain"])?;
+        let files: Vec<String> = porcelain
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect();
+        Ok(GitStatus {
+            branch,
+            dirty: !files.is_empty(),
+            files,
+        })
     })
+    .await
 }
 
 #[tauri::command]
-fn git_available() -> bool {
-    Command::new("git")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+async fn git_available() -> bool {
+    tauri::async_runtime::spawn_blocking(|| {
+        sys_command("git")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
+    .await
+    .unwrap_or(false)
 }
 
 #[tauri::command]
-fn git_init(path: String) -> Result<String, String> {
-    git(&path, &["init"])?;
-    // Make sure there's a branch name even before the first commit.
-    let _ = git(&path, &["symbolic-ref", "HEAD", "refs/heads/main"]);
-    Ok("Initialized repository".into())
+async fn git_init(path: String) -> Result<String, String> {
+    run_blocking(move || {
+        git(&path, &["init"])?;
+        // Make sure there's a branch name even before the first commit.
+        let _ = git(&path, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        Ok("Initialized repository".into())
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -190,76 +236,79 @@ struct GitInfo {
 }
 
 #[tauri::command]
-fn git_info(path: String) -> Result<GitInfo, String> {
-    let is_repo = Command::new("git")
-        .args(["rev-parse", "--is-inside-work-tree"])
-        .current_dir(&path)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if !is_repo {
-        return Ok(GitInfo {
-            is_repo: false,
-            branch: String::new(),
-            has_commits: false,
-            files: vec![],
-            ahead: 0,
-            behind: 0,
-            remote: None,
-            upstream: false,
-        });
-    }
+async fn git_info(path: String) -> Result<GitInfo, String> {
+    run_blocking(move || {
+        let is_repo = sys_command("git")
+            .args(["rev-parse", "--is-inside-work-tree"])
+            .current_dir(&path)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        if !is_repo {
+            return Ok(GitInfo {
+                is_repo: false,
+                branch: String::new(),
+                has_commits: false,
+                files: vec![],
+                ahead: 0,
+                behind: 0,
+                remote: None,
+                upstream: false,
+            });
+        }
 
-    let branch = git(&path, &["rev-parse", "--abbrev-ref", "HEAD"])
-        .unwrap_or_else(|_| "main".into())
-        .trim()
-        .to_string();
-    let has_commits = git(&path, &["rev-parse", "--verify", "HEAD"]).is_ok();
+        let branch = git(&path, &["rev-parse", "--abbrev-ref", "HEAD"])
+            .unwrap_or_else(|_| "main".into())
+            .trim()
+            .to_string();
+        let has_commits = git(&path, &["rev-parse", "--verify", "HEAD"]).is_ok();
 
-    let porcelain = git(&path, &["status", "--porcelain"]).unwrap_or_default();
-    let files = porcelain
-        .lines()
-        .filter(|l| l.len() > 3)
-        .map(|l| GitFile {
-            status: l[..2].trim().to_string(),
-            path: l[3..].to_string(),
-        })
-        .collect();
+        let porcelain = git(&path, &["status", "--porcelain"]).unwrap_or_default();
+        let files = porcelain
+            .lines()
+            .filter(|l| l.len() > 3)
+            .map(|l| GitFile {
+                status: l[..2].trim().to_string(),
+                path: l[3..].to_string(),
+            })
+            .collect();
 
-    let remote = git(&path, &["remote", "get-url", "origin"])
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+        let remote = git(&path, &["remote", "get-url", "origin"])
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
 
-    let upstream = git(
-        &path,
-        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
-    )
-    .is_ok();
+        let upstream = git(
+            &path,
+            &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        )
+        .is_ok();
 
-    let (mut ahead, mut behind) = (0u32, 0u32);
-    if upstream {
-        if let Ok(counts) =
-            git(&path, &["rev-list", "--left-right", "--count", "@{u}...HEAD"])
-        {
-            let parts: Vec<&str> = counts.split_whitespace().collect();
-            if parts.len() == 2 {
-                behind = parts[0].parse().unwrap_or(0);
-                ahead = parts[1].parse().unwrap_or(0);
+        let (mut ahead, mut behind) = (0u32, 0u32);
+        if upstream {
+            if let Ok(counts) =
+                git(&path, &["rev-list", "--left-right", "--count", "@{u}...HEAD"])
+            {
+                let parts: Vec<&str> = counts.split_whitespace().collect();
+                if parts.len() == 2 {
+                    behind = parts[0].parse().unwrap_or(0);
+                    ahead = parts[1].parse().unwrap_or(0);
+                }
             }
         }
-    }
 
-    Ok(GitInfo {
-        is_repo: true,
-        branch,
-        has_commits,
-        files,
-        ahead,
-        behind,
-        remote,
-        upstream,
+        Ok(GitInfo {
+            is_repo: true,
+            branch,
+            has_commits,
+            files,
+            ahead,
+            behind,
+            remote,
+            upstream,
+        })
     })
+    .await
 }
 
 #[derive(Serialize)]
@@ -272,48 +321,54 @@ struct Commit {
 }
 
 #[tauri::command]
-fn git_log(path: String, limit: u32) -> Result<Vec<Commit>, String> {
-    // \x1f (unit separator) between fields, one commit per line.
-    let fmt = "--pretty=format:%H%x1f%h%x1f%an%x1f%ar%x1f%s";
-    let n = format!("-n{limit}");
-    let out = git(&path, &["log", &n, fmt])?;
-    let commits = out
-        .lines()
-        .filter(|l| !l.is_empty())
-        .filter_map(|l| {
-            let mut p = l.split('\u{1f}');
-            Some(Commit {
-                hash: p.next()?.to_string(),
-                short: p.next()?.to_string(),
-                author: p.next()?.to_string(),
-                date: p.next()?.to_string(),
-                subject: p.next().unwrap_or("").to_string(),
+async fn git_log(path: String, limit: u32) -> Result<Vec<Commit>, String> {
+    run_blocking(move || {
+        // \x1f (unit separator) between fields, one commit per line.
+        let fmt = "--pretty=format:%H%x1f%h%x1f%an%x1f%ar%x1f%s";
+        let n = format!("-n{limit}");
+        let out = git(&path, &["log", &n, fmt])?;
+        let commits = out
+            .lines()
+            .filter(|l| !l.is_empty())
+            .filter_map(|l| {
+                let mut p = l.split('\u{1f}');
+                Some(Commit {
+                    hash: p.next()?.to_string(),
+                    short: p.next()?.to_string(),
+                    author: p.next()?.to_string(),
+                    date: p.next()?.to_string(),
+                    subject: p.next().unwrap_or("").to_string(),
+                })
             })
-        })
-        .collect();
-    Ok(commits)
+            .collect();
+        Ok(commits)
+    })
+    .await
 }
 
 #[tauri::command]
-fn git_pull(path: String) -> Result<String, String> {
-    git(&path, &["pull", "--ff-only"])
+async fn git_pull(path: String) -> Result<String, String> {
+    run_blocking(move || git(&path, &["pull", "--ff-only"])).await
 }
 
 #[tauri::command]
-fn git_push(path: String) -> Result<String, String> {
-    git(&path, &["push"])
+async fn git_push(path: String) -> Result<String, String> {
+    run_blocking(move || git(&path, &["push"])).await
 }
 
 // First push for a branch with no upstream yet: pushes to origin and sets it.
 #[tauri::command]
-fn git_publish(path: String) -> Result<String, String> {
-    git(&path, &["push", "-u", "origin", "HEAD"])
+async fn git_publish(path: String) -> Result<String, String> {
+    run_blocking(move || git(&path, &["push", "-u", "origin", "HEAD"])).await
 }
 
 #[tauri::command]
-fn git_commit_all(path: String, message: String) -> Result<String, String> {
-    git(&path, &["add", "-A"])?;
-    git(&path, &["commit", "-m", &message])
+async fn git_commit_all(path: String, message: String) -> Result<String, String> {
+    run_blocking(move || {
+        git(&path, &["add", "-A"])?;
+        git(&path, &["commit", "-m", &message])
+    })
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -339,9 +394,11 @@ fn token_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(dir.join("github.json"))
 }
 
-fn store_token(app: &AppHandle, token: &str) -> Result<(), String> {
+// Persist the token plus the resolved login, so we can show the signed-in user
+// instantly (and stay signed in) even when the network check later fails.
+fn store_token(app: &AppHandle, token: &str, login: Option<&str>) -> Result<(), String> {
     let p = token_path(app)?;
-    std::fs::write(p, serde_json::json!({ "token": token }).to_string())
+    std::fs::write(p, serde_json::json!({ "token": token, "login": login }).to_string())
         .map_err(|e| e.to_string())
 }
 
@@ -352,10 +409,17 @@ fn load_token(app: &AppHandle) -> Option<String> {
     j["token"].as_str().map(|s| s.to_string())
 }
 
+fn load_login(app: &AppHandle) -> Option<String> {
+    let p = token_path(app).ok()?;
+    let s = std::fs::read_to_string(p).ok()?;
+    let j: serde_json::Value = serde_json::from_str(&s).ok()?;
+    j["login"].as_str().filter(|s| !s.is_empty()).map(|s| s.to_string())
+}
+
 // Best-effort: hand the token to the gh CLI so git operations are authed too.
 fn configure_gh(token: &str) {
     use std::process::Stdio;
-    if let Ok(mut child) = Command::new("gh")
+    if let Ok(mut child) = sys_command("gh")
         .args(["auth", "login", "--with-token"])
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -423,9 +487,10 @@ async fn github_device_poll(app: AppHandle, device_code: String) -> Result<Optio
     let j: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
     if let Some(token) = j["access_token"].as_str() {
-        store_token(&app, token)?;
+        let login = github_login_for(token).await;
+        store_token(&app, token, login.as_deref())?;
         configure_gh(token);
-        return Ok(github_login_for(token).await);
+        return Ok(login);
     }
     match j["error"].as_str().unwrap_or("") {
         "authorization_pending" | "slow_down" => Ok(None),
@@ -447,15 +512,32 @@ async fn github_login_for(token: &str) -> Option<String> {
     j["login"].as_str().map(|s| s.to_string())
 }
 
-// Current identity: stored token first, then fall back to the gh CLI if signed in there.
+// Current identity: verify the stored token over the network, but if that check
+// fails (offline, rate-limited, transient) fall back to the login we remembered
+// at sign-in so the user stays signed in. Then the gh CLI, as a last resort.
 #[tauri::command]
 async fn github_user(app: AppHandle) -> Result<Option<String>, String> {
     if let Some(token) = load_token(&app) {
         if let Some(login) = github_login_for(&token).await {
+            // Refresh the cached login opportunistically.
+            let _ = store_token(&app, &token, Some(&login));
+            return Ok(Some(login));
+        }
+        // Network check failed but we have a token + remembered login → trust it.
+        if let Some(login) = load_login(&app) {
             return Ok(Some(login));
         }
     }
-    if let Ok(out) = Command::new("gh").args(["api", "user", "--jq", ".login"]).output() {
+    let gh = tauri::async_runtime::spawn_blocking(|| {
+        sys_command("gh")
+            .args(["api", "user", "--jq", ".login"])
+            .output()
+            .ok()
+    })
+    .await
+    .ok()
+    .flatten();
+    if let Some(out) = gh {
         if out.status.success() {
             let login = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if !login.is_empty() {
@@ -477,11 +559,11 @@ fn github_logout(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    let res = Command::new("cmd").args(["/c", "start", "", &url]).spawn();
+    let res = sys_command("cmd").args(["/c", "start", "", &url]).spawn();
     #[cfg(target_os = "macos")]
-    let res = Command::new("open").arg(&url).spawn();
+    let res = sys_command("open").arg(&url).spawn();
     #[cfg(target_os = "linux")]
-    let res = Command::new("xdg-open").arg(&url).spawn();
+    let res = sys_command("xdg-open").arg(&url).spawn();
     res.map(|_| ()).map_err(|e| e.to_string())
 }
 

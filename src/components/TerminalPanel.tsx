@@ -1,16 +1,13 @@
 import { Icon } from "./Icon";
 import { ResizeHandle } from "./ResizeHandle";
-import { XtermView } from "./XtermView";
+import { WarmTerminals } from "./WarmTerminals";
 import { useStore } from "../state/store";
 import { inTauri } from "../lib/tauri";
 
-// Integrated shell at the bottom of the editor column (id "terminal"). Opens in
-// the active project's folder; toggle with Ctrl+`.
+// Integrated shell at the bottom of the editor column. One warm shell per
+// recent project (id "terminal:<projectId>"); opens in the active project's
+// folder. Toggle with Ctrl+`.
 export function TerminalPanel() {
-  const project = useStore((s) =>
-    s.projects.find((p) => p.id === s.activeProjectId)
-  );
-  const cwd = project?.path || null;
   const toggle = useStore((s) => s.toggle);
   const height = useStore((s) => s.terminalHeight);
   const setHeight = useStore((s) => s.setTerminalHeight);
@@ -40,7 +37,7 @@ export function TerminalPanel() {
       </div>
       {inTauri ? (
         <div className="term-body">
-          <XtermView id="terminal" program={null} cwd={cwd} />
+          <WarmTerminals idPrefix="terminal" program={null} />
         </div>
       ) : (
         <div className="cl-note">The terminal runs in the desktop app.</div>

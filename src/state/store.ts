@@ -1,6 +1,52 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage, StateStorage } from "zustand/middleware";
 import { THEMES, themeFromAccent, applyTheme } from "../styles/themes";
+
+// localStorage with debounced writes. The editor calls updateFileContent on
+// every keystroke, and persist re-serializes the whole state (including open
+// file contents) on each change — writing that to localStorage per keystroke is
+// needless churn. Reads stay synchronous (so rehydrate is unaffected); only
+// writes are coalesced, with a flush before the app closes so nothing is lost.
+const debouncedLocalStorage: StateStorage = (() => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pending: { name: string; value: string } | null = null;
+  const flush = () => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    if (pending) {
+      try {
+        localStorage.setItem(pending.name, pending.value);
+      } catch {
+        /* quota exceeded / unavailable — drop this write rather than crash */
+      }
+      pending = null;
+    }
+  };
+  if (typeof window !== "undefined") {
+    // pagehide fires reliably when a webview/tab is torn down; beforeunload
+    // covers the desktop close path.
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", flush);
+  }
+  return {
+    getItem: (name) => localStorage.getItem(name),
+    setItem: (name, value) => {
+      pending = { name, value };
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(flush, 350);
+    },
+    removeItem: (name) => {
+      pending = null;
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      localStorage.removeItem(name);
+    },
+  };
+})();
 
 // ---- Settings: one serializable blob. Account sync = push/pull this object.
 // A user-saved palette that shows up alongside the built-in presets.
@@ -56,6 +102,16 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export type SidebarView = "explorer" | "scm";
 
+// How many projects keep their Claude/terminal PTY sessions alive in the
+// background. Switching back to a warm project is instant (no reboot); older
+// ones are torn down to cap memory. See WarmTerminals.tsx.
+export const WARM_CAP = 3;
+
+// Move `id` to the front of the recency list, dedupe, and cap the length.
+function bumpWarm(list: string[], id: string): string[] {
+  return [id, ...list.filter((x) => x !== id)].slice(0, WARM_CAP);
+}
+
 // ---- Workspace: projects, open files, active selection.
 export interface Project {
   id: string;
@@ -88,6 +144,7 @@ interface AppState {
   openFiles: OpenFile[];
   activeFileId: string | null;
   sessions: Record<string, ProjectSession>; // open files per project id
+  warmProjectIds: string[]; // recently-active projects whose PTYs stay warm (LRU)
   showPreview: boolean;
   showClaude: boolean;
   showSettings: boolean;
@@ -147,6 +204,7 @@ export const useStore = create<AppState>()(
       openFiles: [],
       activeFileId: null,
       sessions: {},
+      warmProjectIds: ["home"],
       showPreview: false,
       showClaude: true,
       showSettings: false,
@@ -215,6 +273,7 @@ export const useStore = create<AppState>()(
               : {}),
           },
           activeProjectId: p.id,
+          warmProjectIds: bumpWarm(s.warmProjectIds, p.id),
           openFiles: [],
           activeFileId: null,
           splitFileId: null,
@@ -234,6 +293,7 @@ export const useStore = create<AppState>()(
           return {
             sessions,
             activeProjectId: id,
+            warmProjectIds: bumpWarm(s.warmProjectIds, id),
             openFiles: restored.openFiles,
             activeFileId: restored.activeFileId,
             splitFileId: null,
@@ -271,6 +331,7 @@ export const useStore = create<AppState>()(
     {
       name: "anode-state",
       version: 1,
+      storage: createJSONStorage(() => debouncedLocalStorage),
       // v1: drop the legacy "Welcome" demo project and welcome/scratch files
       // that lingered in saved state after they were removed from the app.
       migrate: (persisted, version) => {
@@ -302,6 +363,9 @@ export const useStore = create<AppState>()(
           ...current,
           ...p,
           settings: { ...DEFAULT_SETTINGS, ...(p.settings ?? {}) },
+          // No PTY survives a restart, so the warm pool starts with just the
+          // active project; others warm up again as you visit them.
+          warmProjectIds: [p.activeProjectId ?? "home"],
           // Never restore a mid-switch overlay state from disk.
           switching: false,
           pendingProjectId: null,

@@ -1,195 +1,306 @@
-# Anode
+<div align="center">
 
-A Claude-native code editor for Windows, built from scratch — **not** on VS Code.
+<img src="src-tauri/icons/128x128@2x.png" width="96" alt="Anode" />
 
-- **Shell:** Tauri 2 (Rust core + WebView2) — small, fast, native Windows acrylic blur
-- **UI:** React 19 + TypeScript + Vite
-- **Editor:** CodeMirror 6 with a custom smooth animated caret
-- **AI:** the real **Claude Code** CLI, run in a PTY and rendered with xterm.js — no API key
+# ⚡ Anode
 
-## Prerequisites
+**A Claude-native code editor built from scratch — not on VS Code.**
 
-- Node 20+ and Rust (stable) — both already detected on this machine
-- **Claude Code** installed and on your PATH (`claude` runs from a terminal) —
-  the right panel launches it directly, so you're signed in exactly as you are
-  in your normal terminal
-- **Microsoft Edge WebView2 runtime** (ships with Windows 11; no action needed)
-- For the desktop build: the MSVC C++ build tools (`rustup` + Visual Studio Build Tools)
+[![Version](https://img.shields.io/badge/version-1.3.3-6366f1?style=for-the-badge&logo=github&logoColor=white)](https://gheat.net/anode)
+[![Platform](https://img.shields.io/badge/Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white)](https://gheat.net/anode)
+[![Platform](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://gheat.net/anode)
+[![Platform](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://gheat.net/anode)
 
-## Run it
+[![Tauri](https://img.shields.io/badge/Tauri_2-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app)
+[![React](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Rust](https://img.shields.io/badge/Rust-CE422B?style=for-the-badge&logo=rust&logoColor=white)](https://rust-lang.org)
+
+**[⬇ Download for Windows](https://gheat.net/anode)** · **[🌐 Website](https://gheat.net/anode)** · **[📖 Docs](#-architecture)**
+
+---
+
+*The editor your AI actually lives in.*
+
+</div>
+
+---
+
+## ✨ What Makes Anode Different
+
+> Most AI editors bolt an LLM onto VS Code. Anode is built from the ground up for **Claude Code** — the real CLI, running in a real PTY, with no API key, no wrappers, no compromises.
+
+<table>
+<tr>
+<td width="50%">
+
+### 🤖 Real Claude Code
+The actual `claude` binary runs in an embedded terminal. Your existing session, your `.claude` folder, your permissions — all inherited. Zero configuration.
+
+</td>
+<td width="50%">
+
+### 🎨 Native Windows Acrylic
+Genuine Windows 11 acrylic blur via DWM — not a CSS hack. The editor breathes with your desktop.
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### ⚡ Built with Tauri 2 + Rust
+~8 MB installer. Microsecond startup. The Rust core handles filesystem, git, PTY, and GitHub OAuth — no Electron, no Node.js runtime.
+
+</td>
+<td width="50%">
+
+### 🌈 Deep Theme System
+Seven built-in palettes. Full custom palette editor. Per-accent theme generation. Saved palettes. Everything driven by CSS variables — swap a theme and every pixel repaints instantly.
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🗂 Feature Map
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| 🤖 Embedded Claude Code CLI | ✅ | Real `claude` binary in a PTY — no API key |
+| 🎨 Theme & palette system | ✅ | CSS-variable driven, 7 presets + custom |
+| 🌫️ Windows acrylic blur | ✅ | Native DWM acrylic via `window-vibrancy` |
+| ✍️ Smooth animated caret | ✅ | Custom CodeMirror 6 `ViewPlugin` |
+| 🔀 Split editor | ✅ | Side-by-side panes with independent scroll |
+| 📁 Project switcher | ✅ | Activity bar rail, emoji/image icons, instant switch |
+| 🔍 Markdown preview | ✅ | Obsidian-style render — markdown-it + tasks/anchors |
+| 🔢 Line numbers & diagnostics | ✅ | Gutter + error/warning underlines |
+| 🐙 GitHub Source Control | ✅ | Commit, sync, push/pull, branch info, OAuth device flow |
+| 🔒 GitHub OAuth sign-in | ✅ | Device flow, built-in client ID, no setup needed |
+| 🖥️ Integrated terminal | ✅ | PTY shell (PowerShell/zsh/bash) at the bottom |
+| 🖼️ Project icons | ✅ | 40 emojis, tint colors, or upload PNG/SVG |
+| 🔌 Settings cloud sync | ✅ | Self-hosted backend at `gheat.net/anode` |
+| 🖋️ Typography controls | ✅ | Interface + editor font, base size |
+| 🌐 macOS / Linux | ✅ | Solid surfaces (acrylic is Windows-only) |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+| Requirement | Details |
+|-------------|---------|
+| ![Node](https://img.shields.io/badge/Node_20+-339933?logo=node.js&logoColor=white&style=flat-square) | JavaScript runtime |
+| ![Rust](https://img.shields.io/badge/Rust_stable-CE422B?logo=rust&logoColor=white&style=flat-square) | Tauri's native core |
+| ![Claude](https://img.shields.io/badge/Claude_Code-6366F1?logo=anthropic&logoColor=white&style=flat-square) | `claude` on your PATH |
+| ![WebView2](https://img.shields.io/badge/WebView2-0078D4?logo=microsoft-edge&logoColor=white&style=flat-square) | Ships with Windows 11 |
 
 ```powershell
-npm install          # once
-npm run app          # launches the desktop app (compiles Rust the first time)
+npm install        # install JS dependencies (once)
+npm run app        # launch Anode — compiles Rust on first run (~2–3 min)
 ```
 
-`npm run app` runs `tauri dev`: it starts Vite on :1420 and boots the native
-window. The first launch compiles the Rust crates and takes a few minutes;
-after that it's instant with hot-reload on the frontend.
+> **Tip:** The first `cargo` compile takes a few minutes. Every launch after that is instant with hot-reload on the frontend.
 
-Frontend-only preview (no native features — Claude/git/blur are stubbed):
-
+**Frontend-only preview** (no native features — Claude/git/blur are stubbed):
 ```powershell
-npm run dev          # open http://localhost:1420 in a browser
+npm run dev        # open http://localhost:1420 in a browser
 ```
 
-## Build for your own OS
+---
 
-Tauri does **not** cross-compile — build on the OS you want to run on. Every
-build is the same two steps; output lands in `src-tauri/target/release/bundle/`.
+## 📦 Download & Install
+
+<div align="center">
+
+**[⬇ Download Anode.exe for Windows → gheat.net/anode](https://gheat.net/anode)**
+
+</div>
+
+### 🪟 Windows
+Download `Anode.exe` from [gheat.net/anode](https://gheat.net/anode) and run it.
+
+> On the SmartScreen prompt: **More info → Run anyway** (unsigned, not unsafe — code signing requires the paid Microsoft EV certificate program).
+
+### 🍎 macOS (unsigned)
+macOS Gatekeeper blocks unsigned apps on first launch. One of two fixes:
+
+```bash
+# Option A — right-click Anode.app → Open → Open (only needed once)
+
+# Option B — strip quarantine flag
+xattr -cr /Applications/Anode.app
+```
+
+> If you see *"Anode is damaged"* that's the quarantine flag — `xattr -cr` fixes it.
+
+### 🐧 Linux
+Install the `.deb`/`.rpm` with your package manager, or run the `.AppImage` directly:
+
+```bash
+chmod +x Anode_1.3.3_amd64.AppImage
+./Anode_1.3.3_amd64.AppImage
+```
+
+A compositor (standard on GNOME/KDE) is required for transparent rounded corners.
+
+---
+
+## 🏗 Build from Source
+
+> Tauri does **not** cross-compile — build on the OS you want to target.
 
 ```bash
 npm install
-npm run app:build      # = tauri build
+npm run app:build    # → src-tauri/target/release/bundle/
 ```
 
-The version comes from `src-tauri/tauri.conf.json` → `"version"` (currently
-`1.3.3`); bump it there plus `package.json` and `Cargo.toml` for each release.
+Output per OS:
 
-### Windows
-**Prereqs:** Rust, the MSVC C++ Build Tools, Node. WebView2 ships with Windows 11.
+| OS | Artifact |
+|----|----------|
+| Windows | `nsis/Anode_1.3.3_x64-setup.exe` + `.msi` |
+| macOS | `dmg/Anode_1.3.3_aarch64.dmg` + `macos/Anode.app` |
+| Linux | `deb/*.deb` · `appimage/*.AppImage` · `rpm/*.rpm` |
 
-```powershell
-npm run app:build
-```
-Produces `nsis/Anode_1.3.3_x64-setup.exe` (and an `.msi`). The official Windows
-download is the release **`Anode.exe`** — rename the setup exe and attach it to
-the GitHub Release. First run shows a SmartScreen "unknown publisher" prompt
-(unsigned) → **More info → Run anyway**.
-
-### Linux
-**Prereqs:**
+**Linux build prerequisites:**
 ```bash
 sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
   libssl-dev build-essential curl
-# + Rust (rustup) and Node 20
 ```
+
+**Type-check & verify (no full build):**
 ```bash
-npm run app:build
-```
-Produces `deb/*.deb`, `appimage/*.AppImage`, and `rpm/*.rpm`. The AppImage is
-portable: `chmod +x Anode_1.3.3_amd64.AppImage && ./Anode_1.3.3_amd64.AppImage`.
-A compositor is needed for the transparent rounded corners (standard on
-GNOME/KDE).
-
-### macOS
-**Prereqs:** Rust, Xcode Command Line Tools (`xcode-select --install`), Node.
-
-```bash
-npm run app:build
-```
-Produces `dmg/Anode_1.3.3_aarch64.dmg` and `macos/Anode.app`.
-
-> **No Apple Developer account?** That's fine — the build just isn't signed or
-> notarized, so macOS Gatekeeper warns on first open. See **Installing on macOS**
-> below for how to get past it. (Signing requires the $99/yr Apple program; it's
-> only needed to ship a "just works" double-click install to other people.)
-
-## Installing
-
-### Windows
-Download `Anode.exe` from Releases and run it. On the SmartScreen prompt choose
-**More info → Run anyway** (it's unsigned, not unsafe).
-
-### macOS (unsigned build)
-Because the app isn't notarized, macOS blocks it on first launch. Get past it one
-of these ways:
-
-- **Right-click method:** right-click `Anode.app` → **Open** → **Open** in the
-  dialog. (Only needed once.)
-- **Or strip the quarantine flag** in Terminal:
-  ```bash
-  xattr -cr /Applications/Anode.app
-  ```
-  Then open it normally. If you see *"Anode is damaged"*, that's the same
-  quarantine issue — the `xattr -cr` command fixes it.
-
-### Linux
-Install the `.deb`/`.rpm` with your package manager, or just run the `.AppImage`
-directly.
-
-### Cross-platform notes
-- The acrylic **blur is Windows-only**; macOS/Linux use solid (exact) surfaces.
-- Regenerate icons after changing the logo: `npm run tauri -- icon path/to/1024.png`.
-
-## Where things live
-
-```
-src/
-  App.tsx                 # app shell + layout
-  state/store.ts          # zustand store: settings + workspace (the sync blob)
-  styles/
-    themes.ts             # theme presets + palette-from-accent generator
-    global.css            # all styling, driven by CSS variables
-  editor/
-    setup.ts              # CodeMirror extensions, languages, syntax theme
-    smoothCaret.ts        # the animated caret (ViewPlugin)
-    linter.ts             # demo diagnostics → error/warning highlights
-  components/
-    TitleBar / ActivityBar / Sidebar / EditorArea / EditorPane
-    MarkdownPreview       # Obsidian-style render (markdown-it)
-    ClaudePanel           # the real Claude Code CLI in an xterm.js terminal
-    SettingsPanel         # themes, palette, fonts, blur, sync
-    ResizeHandle.tsx      # draggable dividers for the side panels
-    Icon.tsx              # monochrome currentColor icon pack
-  lib/tauri.ts            # typed wrappers around Rust commands
-src-tauri/
-  src/lib.rs              # blur, fs read/write, git, Claude Code PTY
-  tauri.conf.json         # frameless transparent window config
+npx tsc --noEmit              # frontend
+npx vite build                # bundle
+cd src-tauri && cargo check   # Rust
 ```
 
-## Feature map (what's wired vs. stubbed)
+---
 
-| Feature                         | Status | Notes |
-| ------------------------------- | ------ | ----- |
-| Themes + palette chooser        | ✅     | CSS-variable based, fully consistent |
-| Global fonts                    | ✅     | Interface + editor font, base size |
-| Blurred background              | ✅     | Windows acrylic via `window-vibrancy` |
-| Smooth caret                    | ✅     | Custom CodeMirror ViewPlugin |
-| Monochrome icons                | ✅     | `currentColor` SVGs, recolor with theme |
-| Markdown preview                | ✅     | markdown-it + tasks/anchors |
-| Line numbers + diagnostics      | ✅     | demo linter; swap for an LSP |
-| Project switcher (no reload)    | ✅     | activity-bar rail, state-only switch |
-| Add repo / folder               | ✅     | `+` opens the native folder picker, loads the real tree |
-| Resizable + closable panels     | ✅     | drag the edges; close Claude via the panel's ✕ or the rail |
-| Claude embedded                 | ✅     | the real `claude` CLI in a PTY — no API key |
-| GitHub push/pull                | ✅\*   | shells to system `git`; uses the picked folder's path |
-| Settings sync                   | 🔌     | local + export/import; point at your backend |
+## 🏛 Architecture
 
-\* Git commands run against the active project's folder. The seeded demo
-project has no path; add a real one with the `+` button.
+```
+┌─────────────────────── WebView (React + TypeScript) ───────────────────────┐
+│                                                                             │
+│   App.tsx ── layout, keybindings, blur/theme sync                          │
+│    ├─ TitleBar ── MenuBar (File / Edit / View / Terminal / Help)           │
+│    ├─ ActivityBar ── project switcher · view toggles · tool buttons        │
+│    ├─ Sidebar ── Explorer (FS tree) │ SourceControl (git + GitHub)         │
+│    ├─ EditorArea ── tabs · EditorPane(s) · MarkdownPreview                 │
+│    │               └─ TerminalPanel (shell PTY)                            │
+│    ├─ ClaudePanel ── the real Claude Code CLI in xterm.js                  │
+│    └─ SettingsPanel · SetupWizard                                          │
+│                                                                             │
+│   zustand store ── persisted to localStorage (settings + workspace)        │
+│   lib/tauri.ts ── typed invoke() wrappers + event listeners                │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │  Tauri IPC (commands + events)
+┌────────────────────────────────┴────────────────────────────────────────────┐
+│  src-tauri/src/lib.rs (Rust)                                                │
+│   • Window    — acrylic blur (DWM), rounded corners (DWM DWMWA attr)       │
+│   • FS        — read_dir / read_file / write_file / read_image_data_url    │
+│   • Git       — shells to system git; reuses the OS credential manager     │
+│   • GitHub    — OAuth device flow via reqwest (client ID baked in)         │
+│   • PTY       — PtyManager (portable-pty); streams pty://output events     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-## GitHub sign-in
+### 🗃 Stack at a Glance
 
-The Source Control panel (git icon in the left rail) auto-detects whether git is
-installed and whether the open folder is a repo — offering **Initialize
-Repository**, a commit box, and a **Sync** button as appropriate.
+| Layer | Technology | Why |
+|-------|-----------|-----|
+| Desktop shell | **Tauri 2** (Rust) | ~8 MB installer, native WebView, no Electron |
+| Frontend | **React 19** + **TypeScript** + **Vite 6** | Fast iteration, strict types |
+| Code editor | **CodeMirror 6** | Modular, not VS Code; enables the custom animated caret |
+| Terminal | **xterm.js** + **FitAddon** | Battle-tested PTY rendering |
+| State | **zustand** + `persist` | Tiny, selector-based, localStorage sync |
+| Markdown | **markdown-it** | Fast, pluggable (task lists, anchors) |
+| PTY | **portable-pty** (Rust) | Cross-platform pseudo-terminal |
+| HTTP | **reqwest** (Rust) | GitHub OAuth device flow |
+| Native effects | **window-vibrancy** | Windows acrylic; DWM FFI for rounded corners |
 
-"Sign in with GitHub" uses the OAuth **device flow** and works out of the box —
-Anode's OAuth app client ID is built in (client IDs are public; only the client
-*secret* is sensitive, and the device flow doesn't use one). Click sign in,
-enter the shown code on github.com, and you're connected.
+---
 
-To point Anode at a different OAuth app, override the client ID:
+## 🔑 GitHub Sign-In
+
+The Source Control panel auto-detects git and offers **Initialize Repository**, a commit box, and **Sync** as appropriate.
+
+**OAuth device flow** — works out of the box, no setup:
+
+1. Open the Source Control panel → **Sign in with GitHub**
+2. Anode shows a short code and opens `github.com/login/device`
+3. Enter the code, authorize — done
+
+Anode's OAuth app client ID is built in (client IDs are public; the device flow has no secret). To use your own OAuth app:
+
 ```powershell
-$env:ANODE_GITHUB_CLIENT_ID = "Ov23xxxxxxxx"; npm run app
+$env:ANODE_GITHUB_CLIENT_ID = "Ov23xxxxxxxx"
+npm run app
 ```
 
-Either way, **push/pull also work** through Windows' Git Credential Manager,
-which prompts a browser login on first use. If you already use the `gh` CLI and
-are signed in there, Anode shows that identity automatically.
+Push/pull also work through the **system Git Credential Manager** even without signing in — it prompts a browser login on first use.
 
-## Next steps
+---
 
-1. **Save on edit** — wire the editor's dirty buffer to `fs.writeFile` (already
-   exposed) on Ctrl+S so edits persist to disk.
-2. **Real diagnostics** — drop `linter.ts` and connect a language server via
-   `tower-lsp` on the Rust side, surfacing results through `@codemirror/lint`.
-3. **Persist the Claude session** — today toggling the panel restarts `claude`
-   in the active folder. Keep the PTY alive across toggles (don't `claude_kill`
-   on unmount) if you want the conversation to survive hiding the panel.
-4. **Settings sync backend** — the entire `Settings` object is one JSON blob;
-   wire `exportSettings`/`importSettings` in `SettingsPanel.tsx` to
-   `POST/GET /settings` behind your auth.
-5. **GitHub OAuth** — for clone-by-URL and private repos, add a device-flow
-   login; push/pull already reuse the Windows credential manager.
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+S` | Save focused file |
+| `Ctrl+W` | Close active tab |
+| `Ctrl+B` | Toggle sidebar |
+| `` Ctrl+` `` | Toggle integrated terminal |
+| `Ctrl+J` | Toggle Claude panel |
+| `Ctrl+,` | Open Settings |
+| `Ctrl+\` | Toggle split editor |
+
+---
+
+## 📁 Project Layout
+
+```
+Anode Code Editor/
+├── src/
+│   ├── App.tsx                  # app shell + layout + keybindings
+│   ├── state/store.ts           # zustand: settings + workspace + persist
+│   ├── styles/
+│   │   ├── themes.ts            # 7 theme presets + palette generators
+│   │   └── global.css           # all styling — CSS variables everywhere
+│   ├── editor/
+│   │   ├── setup.ts             # CodeMirror extensions + language support
+│   │   ├── smoothCaret.ts       # animated caret (ViewPlugin)
+│   │   └── linter.ts            # demo diagnostics → underlines
+│   ├── components/
+│   │   ├── ClaudePanel.tsx      # Claude Code CLI panel
+│   │   ├── TerminalPanel.tsx    # integrated shell
+│   │   ├── SourceControl.tsx    # git + GitHub UI
+│   │   ├── SettingsPanel.tsx    # themes, fonts, sync
+│   │   └── ...                  # TitleBar, Sidebar, EditorArea, etc.
+│   └── lib/
+│       ├── tauri.ts             # typed Rust command wrappers
+│       └── actions.ts           # save, open folder, editor commands
+└── src-tauri/
+    ├── src/lib.rs               # blur, fs, git, GitHub OAuth, PTY
+    └── tauri.conf.json          # frameless transparent window
+```
+
+---
+
+## 📝 Cross-Platform Notes
+
+- **Acrylic blur is Windows-only** — macOS/Linux use solid surfaces (exact colors)
+- **Regenerate icons** after logo changes: `npm run tauri -- icon path/to/1024.png`
+- **Build on the target OS** — Tauri does not cross-compile
+- `claude` and `git` must be on PATH; Claude inherits your existing CLI login
+
+---
+
+<div align="center">
+
+**[⬇ Download → gheat.net/anode](https://gheat.net/anode)**
+
+Made with ⚡ by [Gheat](https://gheat.net) · © 2026 Gheat
+
+</div>

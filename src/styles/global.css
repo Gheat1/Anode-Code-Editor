@@ -41,6 +41,8 @@ body {
   color: var(--text);
   background: var(--bg); /* opaque */
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   user-select: none;
 }
 
@@ -71,6 +73,11 @@ button {
 .app {
   display: grid;
   grid-template-rows: var(--titlebar-h) 1fr;
+  /* minmax(0, 1fr) (not the default `auto`) caps the single column at the
+     viewport width, so an over-wide workspace row can never stretch the column
+     and drag the title bar's window buttons off-screen — the workspace just
+     clips instead. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
   background: var(--bg);
@@ -103,7 +110,9 @@ svg {
 
 .workspace {
   display: flex;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* ---- Title bar ---------------------------------------------------------- */
@@ -356,6 +365,7 @@ svg {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   background: var(--surface);
 }
 .tabs {
@@ -1243,7 +1253,12 @@ svg {
 }
 .sidebar,
 .claude {
-  flex-shrink: 0;
+  /* Shrink to fit when the window is too narrow for both panels at their set
+     widths, rather than overflowing (which used to push the title bar
+     off-screen). The editor fills leftover space first, so these only compress
+     once it's down to nothing. */
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 /* ---- Menu bar (File / Edit / View / …) ---------------------------------- */
@@ -1351,6 +1366,15 @@ svg {
 /* ---- xterm host (shared by Claude panel + terminal) --------------------- */
 .cl-term {
   display: flex;
+}
+/* One warm PTY view per recent project; only the active one is shown (the
+   rest are display:none but stay mounted to keep their session alive). The
+   visible one fills its panel exactly like a lone terminal did. */
+.warm-term {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
 }
 .xterm-host {
   flex: 1;
@@ -2532,6 +2556,51 @@ input[type="range"] {
 }
 .wiz-account-head svg {
   color: var(--accent);
+}
+
+/* ---- UI refinements ----------------------------------------------------- */
+/* Themed text selection everywhere, matching the editor's selection colour. */
+::selection {
+  background: var(--selection);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  transition: background-color 0.15s;
+}
+
+/* Soft accent ring on focused text fields — a clearer focus state than border
+   colour alone, without a harsh outline. */
+.claude textarea:focus,
+.scm-commit textarea:focus,
+.row input:focus,
+.row select:focus,
+.acct input:focus {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Keyboard focus ring — appears only on tab-focus, never on mouse click. */
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Tactile press feedback on the high-touch icon/tool buttons. */
+.titlebar .win-btns button,
+.cl-tool,
+.cl-close,
+.scm-icon,
+.tab-action {
+  transition: background 0.14s, color 0.14s, transform 0.09s ease;
+}
+.titlebar .win-btns button:active,
+.cl-tool:active,
+.cl-close:active,
+.scm-icon:active,
+.tab-action:active {
+  transform: scale(0.9);
 }
 
 @media (prefers-reduced-motion: reduce) {

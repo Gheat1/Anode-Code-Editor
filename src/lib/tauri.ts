@@ -113,7 +113,8 @@ export const setBlur = (enabled: boolean) =>
   inTauri ? invoke<void>("set_blur", { enabled }) : Promise.resolve();
 
 // ---- Pseudo-terminals ----------------------------------------------------
-// Keyed by id: "claude" runs Claude Code, "terminal" opens a shell.
+// Keyed by id: a "claude:<projectId>" runs Claude Code, "terminal:<projectId>"
+// opens a shell. Each project keeps its own warm session (see WarmTerminals).
 export const pty = {
   start: (
     id: string,

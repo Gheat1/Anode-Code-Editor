@@ -139,7 +139,7 @@ export function Sidebar() {
       <ResizeHandle
         side="right"
         value={sidebarWidth}
-        min={180}
+        min={150}
         max={480}
         dir={1}
         onChange={setSidebarWidth}
