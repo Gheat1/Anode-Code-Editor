@@ -25,13 +25,15 @@ export function EditorPane({ fileId }: { fileId?: string }) {
   useEffect(() => {
     if (!hostRef.current || !file) return;
     const fid = file.id;
+    // Big files: skip the per-keystroke linter to keep typing responsive.
+    const big = file.content.length > 200_000;
 
     const state = EditorState.create({
       doc: file.content,
       extensions: [
         baseExtensions({ lineNumbers: lineNumbersOn }),
         languageFor(file.name),
-        demoLinter,
+        ...(big ? [] : [demoLinter]),
         caretComp.current.of(smoothCaretOn ? smoothCaret : []),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) updateFileContent(fid, u.state.doc.toString());

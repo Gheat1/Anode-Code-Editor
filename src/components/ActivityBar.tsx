@@ -17,7 +17,7 @@ function ProjectGlyph({ icon }: { icon?: string }) {
 export function ActivityBar() {
   const projects = useStore((s) => s.projects);
   const activeProjectId = useStore((s) => s.activeProjectId);
-  const setActiveProject = useStore((s) => s.setActiveProject);
+  const switchProject = useStore((s) => s.switchProject);
   const addProject = useStore((s) => s.addProject);
   const showPreview = useStore((s) => s.showPreview);
   const showClaude = useStore((s) => s.showClaude);
@@ -45,7 +45,7 @@ export function ActivityBar() {
           key={p.id}
           className={`project-icon ${p.id === activeProjectId ? "active" : ""}`}
           title={`${p.path || p.name}  ·  right-click to change icon`}
-          onClick={() => setActiveProject(p.id)}
+          onClick={() => switchProject(p.id)}
           onContextMenu={(e) => {
             e.preventDefault();
             setPicker({ id: p.id, x: e.clientX, y: e.clientY });

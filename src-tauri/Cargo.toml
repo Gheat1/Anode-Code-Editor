@@ -1,6 +1,6 @@
 [package]
 name = "anode"
-version = "1.2.1"
+version = "1.2.2"
 description = "Anode - A Simple, Clean, Efficient Editor."
 authors = ["Gheat"]
 edition = "2021"

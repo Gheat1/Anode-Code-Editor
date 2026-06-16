@@ -1,11 +1,21 @@
+import { lazy, Suspense } from "react";
 import { Icon } from "./Icon";
 import { FileLabel } from "./FileLabel";
-import { EditorPane } from "./EditorPane";
-import { MarkdownPreview } from "./MarkdownPreview";
-import { TerminalPanel } from "./TerminalPanel";
 import { ResizeHandle } from "./ResizeHandle";
 import { useStore } from "../state/store";
 import { openFolderAsProject } from "../lib/actions";
+
+// Code-split: CodeMirror (the big one) loads only when a file is opened;
+// markdown-it when the preview is opened; xterm when the terminal is opened.
+const EditorPane = lazy(() =>
+  import("./EditorPane").then((m) => ({ default: m.EditorPane }))
+);
+const MarkdownPreview = lazy(() =>
+  import("./MarkdownPreview").then((m) => ({ default: m.MarkdownPreview }))
+);
+const TerminalPanel = lazy(() =>
+  import("./TerminalPanel").then((m) => ({ default: m.TerminalPanel }))
+);
 
 export function EditorArea() {
   const openFiles = useStore((s) => s.openFiles);
@@ -79,54 +89,64 @@ export function EditorArea() {
 
           {isMarkdown && showPreview ? (
             <div className="editor-host">
-              <MarkdownPreview />
+              <Suspense fallback={null}>
+                <MarkdownPreview />
+              </Suspense>
             </div>
           ) : splitView ? (
-            <div className="editor-host split">
-              <div className="split-pane" style={{ width: splitWidth }}>
-                <EditorPane fileId={activeFileId ?? undefined} />
-                <ResizeHandle
-                  axis="x"
-                  side="right"
-                  value={splitWidth}
-                  min={260}
-                  max={1100}
-                  dir={1}
-                  onChange={setSplitWidth}
-                />
-              </div>
-              <div className="split-pane grow">
-                <div className="split-head">
-                  <select
-                    value={rightId ?? ""}
-                    onChange={(e) => setSplitFile(e.target.value)}
-                  >
-                    {openFiles.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="split-close"
-                    title="Close split"
-                    onClick={() => toggle("splitView")}
-                  >
-                    <Icon name="close" size={14} />
-                  </button>
+            <Suspense fallback={<div className="editor-host" />}>
+              <div className="editor-host split">
+                <div className="split-pane" style={{ width: splitWidth }}>
+                  <EditorPane fileId={activeFileId ?? undefined} />
+                  <ResizeHandle
+                    axis="x"
+                    side="right"
+                    value={splitWidth}
+                    min={260}
+                    max={1100}
+                    dir={1}
+                    onChange={setSplitWidth}
+                  />
                 </div>
-                {rightId && <EditorPane fileId={rightId} />}
+                <div className="split-pane grow">
+                  <div className="split-head">
+                    <select
+                      value={rightId ?? ""}
+                      onChange={(e) => setSplitFile(e.target.value)}
+                    >
+                      {openFiles.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="split-close"
+                      title="Close split"
+                      onClick={() => toggle("splitView")}
+                    >
+                      <Icon name="close" size={14} />
+                    </button>
+                  </div>
+                  {rightId && <EditorPane fileId={rightId} />}
+                </div>
               </div>
-            </div>
+            </Suspense>
           ) : (
-            <div className="editor-host">
-              <EditorPane />
-            </div>
+            <Suspense fallback={<div className="editor-host" />}>
+              <div className="editor-host">
+                <EditorPane />
+              </div>
+            </Suspense>
           )}
         </>
       )}
 
-      {showTerminal && <TerminalPanel />}
+      {showTerminal && (
+        <Suspense fallback={null}>
+          <TerminalPanel />
+        </Suspense>
+      )}
     </section>
   );
 }

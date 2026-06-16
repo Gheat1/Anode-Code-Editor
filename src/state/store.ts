@@ -74,12 +74,20 @@ export interface OpenFile {
   dirty: boolean;
 }
 
+// Per-project snapshot of which files are open, so switching projects restores
+// the tabs you had there last (and they persist across restarts).
+export interface ProjectSession {
+  openFiles: OpenFile[];
+  activeFileId: string | null;
+}
+
 interface AppState {
   settings: Settings;
   projects: Project[];
   activeProjectId: string | null;
   openFiles: OpenFile[];
   activeFileId: string | null;
+  sessions: Record<string, ProjectSession>; // open files per project id
   showPreview: boolean;
   showClaude: boolean;
   showSettings: boolean;
@@ -93,8 +101,12 @@ interface AppState {
   sidebarWidth: number;
   claudeWidth: number;
   terminalHeight: number;
+  switching: boolean; // true while a project switch is masked by the loading overlay
+  pendingProjectId: string | null;
 
   setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  switchProject: (id: string) => void;
+  finishSwitch: () => void;
   setSidebarView: (v: SidebarView) => void;
   setSidebarWidth: (w: number) => void;
   setClaudeWidth: (w: number) => void;
@@ -129,6 +141,7 @@ export const useStore = create<AppState>()(
       activeProjectId: "home",
       openFiles: [],
       activeFileId: null,
+      sessions: {},
       showPreview: false,
       showClaude: true,
       showSettings: false,
@@ -142,9 +155,21 @@ export const useStore = create<AppState>()(
       sidebarWidth: 240,
       claudeWidth: 420,
       terminalHeight: 240,
+      switching: false,
+      pendingProjectId: null,
 
       setSetting: (key, value) =>
         set((s) => ({ settings: { ...s.settings, [key]: value } })),
+
+      // Request a masked project switch (App applies it on the next frame, behind
+      // the grey loading overlay, so the heavy remount jank isn't visible).
+      switchProject: (id) =>
+        set((s) =>
+          s.activeProjectId === id || s.pendingProjectId === id
+            ? {}
+            : { switching: true, pendingProjectId: id }
+        ),
+      finishSwitch: () => set({ switching: false, pendingProjectId: null }),
 
       setSidebarView: (v) => set({ sidebarView: v }),
       setSidebarWidth: (w) => set({ sidebarWidth: w }),
@@ -168,9 +193,40 @@ export const useStore = create<AppState>()(
         })),
 
       addProject: (p) =>
-        set((s) => ({ projects: [...s.projects, p], activeProjectId: p.id })),
+        set((s) => ({
+          projects: [...s.projects, p],
+          // Save the current project's tabs, open the new one empty.
+          sessions: {
+            ...s.sessions,
+            ...(s.activeProjectId
+              ? { [s.activeProjectId]: { openFiles: s.openFiles, activeFileId: s.activeFileId } }
+              : {}),
+          },
+          activeProjectId: p.id,
+          openFiles: [],
+          activeFileId: null,
+          splitFileId: null,
+        })),
 
-      setActiveProject: (id) => set({ activeProjectId: id }),
+      setActiveProject: (id) =>
+        set((s) => {
+          if (id === s.activeProjectId) return {};
+          // Snapshot the project we're leaving, restore the one we're entering.
+          const sessions = {
+            ...s.sessions,
+            ...(s.activeProjectId
+              ? { [s.activeProjectId]: { openFiles: s.openFiles, activeFileId: s.activeFileId } }
+              : {}),
+          };
+          const restored = sessions[id] ?? { openFiles: [], activeFileId: null };
+          return {
+            sessions,
+            activeProjectId: id,
+            openFiles: restored.openFiles,
+            activeFileId: restored.activeFileId,
+            splitFileId: null,
+          };
+        }),
 
       openFile: (f) =>
         set((s) =>
@@ -234,6 +290,9 @@ export const useStore = create<AppState>()(
           ...current,
           ...p,
           settings: { ...DEFAULT_SETTINGS, ...(p.settings ?? {}) },
+          // Never restore a mid-switch overlay state from disk.
+          switching: false,
+          pendingProjectId: null,
         };
       },
     }

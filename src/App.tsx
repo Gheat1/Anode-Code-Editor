@@ -1,14 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { ActivityBar } from "./components/ActivityBar";
 import { Sidebar } from "./components/Sidebar";
 import { EditorArea } from "./components/EditorArea";
-import { ClaudePanel } from "./components/ClaudePanel";
-import { SettingsPanel } from "./components/SettingsPanel";
-import { SetupWizard } from "./components/SetupWizard";
 import { useStore, syncAppearance } from "./state/store";
 import { setBlur } from "./lib/tauri";
 import { saveActiveFile, closeActiveTab } from "./lib/actions";
+
+// Heavy panels are code-split so the initial bundle (and webview parse) stays
+// small; their chunks (xterm, etc.) load only when first shown.
+const ClaudePanel = lazy(() =>
+  import("./components/ClaudePanel").then((m) => ({ default: m.ClaudePanel }))
+);
+const SettingsPanel = lazy(() =>
+  import("./components/SettingsPanel").then((m) => ({ default: m.SettingsPanel }))
+);
+const SetupWizard = lazy(() =>
+  import("./components/SetupWizard").then((m) => ({ default: m.SetupWizard }))
+);
 
 export default function App() {
   const settings = useStore((s) => s.settings);
@@ -16,7 +25,10 @@ export default function App() {
   const showSidebar = useStore((s) => s.showSidebar);
   const showSettings = useStore((s) => s.showSettings);
   const welcomeDismissed = useStore((s) => s.welcomeDismissed);
-  // Show the README once per launch until the user dismisses it for good.
+  const switching = useStore((s) => s.switching);
+  const pendingProjectId = useStore((s) => s.pendingProjectId);
+  const setActiveProject = useStore((s) => s.setActiveProject);
+  const finishSwitch = useStore((s) => s.finishSwitch);
   const [showWelcome, setShowWelcome] = useState(!welcomeDismissed);
 
   // Apply theme + global font on any settings change.
@@ -32,6 +44,22 @@ export default function App() {
     document.body.classList.toggle("no-blur", !blurOn);
     if (isWindows) setBlur(settings.blurEnabled).catch(() => {});
   }, [settings.blurEnabled]);
+
+  // Masked project switch: the overlay is already painted (switching=true), so
+  // defer the heavy remount to the next frame, then reveal once it settles. The
+  // reveal timer fires after the (possibly janky) re-render completes, so the
+  // grey overlay covers the whole freeze regardless of how long it takes.
+  useEffect(() => {
+    if (!pendingProjectId) return;
+    const id = pendingProjectId;
+    const raf = requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        setActiveProject(id);
+        window.setTimeout(finishSwitch, 550);
+      })
+    );
+    return () => cancelAnimationFrame(raf);
+  }, [pendingProjectId, setActiveProject, finishSwitch]);
 
   // Global keyboard shortcuts.
   useEffect(() => {
@@ -81,10 +109,30 @@ export default function App() {
         <ActivityBar />
         {showSidebar && <Sidebar />}
         <EditorArea />
-        {showClaude && <ClaudePanel />}
+        {showClaude && (
+          <Suspense fallback={null}>
+            <ClaudePanel />
+          </Suspense>
+        )}
       </div>
-      {showSettings && <SettingsPanel />}
-      {showWelcome && <SetupWizard onClose={() => setShowWelcome(false)} />}
+
+      {showSettings && (
+        <Suspense fallback={null}>
+          <SettingsPanel />
+        </Suspense>
+      )}
+      {showWelcome && (
+        <Suspense fallback={null}>
+          <SetupWizard onClose={() => setShowWelcome(false)} />
+        </Suspense>
+      )}
+
+      {switching && (
+        <div className="repo-loading">
+          <div className="repo-spinner" />
+          <div className="repo-loading-text">Switching project…</div>
+        </div>
+      )}
     </div>
   );
 }

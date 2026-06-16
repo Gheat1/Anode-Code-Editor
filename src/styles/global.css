@@ -2404,6 +2404,37 @@ input[type="range"] {
   transform: scale(0.97);
 }
 
+/* ---- Project-switch loading overlay ------------------------------------- */
+.repo-loading {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  z-index: 200;
+  animation: fade-in 0.12s ease;
+}
+.repo-spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid var(--bg-active);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+.repo-loading-text {
+  color: var(--text-faint);
+  font-size: 13px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
