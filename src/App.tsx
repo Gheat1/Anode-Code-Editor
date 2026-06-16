@@ -5,6 +5,7 @@ import { Sidebar } from "./components/Sidebar";
 import { EditorArea } from "./components/EditorArea";
 import { useStore, syncAppearance } from "./state/store";
 import { setBlur } from "./lib/tauri";
+import { account } from "./lib/account";
 import { saveActiveFile, closeActiveTab } from "./lib/actions";
 
 // Heavy panels are code-split so the initial bundle (and webview parse) stays
@@ -60,6 +61,23 @@ export default function App() {
     );
     return () => cancelAnimationFrame(raf);
   }, [pendingProjectId, setActiveProject, finishSwitch]);
+
+  // Validate the saved Anode-account session once on launch and publish the
+  // signed-in email to the store (the activity bar + Settings read it).
+  useEffect(() => {
+    const setAccountEmail = useStore.getState().setAccountEmail;
+    if (account.isSignedIn()) {
+      account
+        .me()
+        .then(setAccountEmail)
+        .catch(() => {
+          account.logout();
+          setAccountEmail(null);
+        });
+    } else {
+      setAccountEmail(null);
+    }
+  }, []);
 
   // Global keyboard shortcuts.
   useEffect(() => {

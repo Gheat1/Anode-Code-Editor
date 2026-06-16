@@ -24,6 +24,8 @@ export function ActivityBar() {
   const toggle = useStore((s) => s.toggle);
   const sidebarView = useStore((s) => s.sidebarView);
   const setSidebarView = useStore((s) => s.setSidebarView);
+  const accountEmail = useStore((s) => s.accountEmail);
+  const openSettingsAt = useStore((s) => s.openSettingsAt);
   const [picker, setPicker] = useState<{ id: string; x: number; y: number } | null>(null);
 
   async function addRepo() {
@@ -104,6 +106,17 @@ export function ActivityBar() {
           onClick={() => toggle("showSettings")}
         >
           <Icon name="settings" size={20} />
+        </button>
+        <button
+          className="tool-btn account-btn"
+          title={accountEmail ? `Signed in as ${accountEmail}` : "Sign in to Anode"}
+          onClick={() => openSettingsAt("sync")}
+        >
+          {accountEmail ? (
+            <span className="account-avatar">{accountEmail[0]?.toUpperCase()}</span>
+          ) : (
+            <Icon name="user" size={20} />
+          )}
         </button>
       </div>
     </nav>

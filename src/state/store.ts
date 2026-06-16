@@ -103,8 +103,13 @@ interface AppState {
   terminalHeight: number;
   switching: boolean; // true while a project switch is masked by the loading overlay
   pendingProjectId: string | null;
+  accountEmail: string | null; // signed-in Anode account (null = signed out)
+  settingsSection: string; // active section in the Settings panel
 
   setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  setAccountEmail: (email: string | null) => void;
+  setSettingsSection: (section: string) => void;
+  openSettingsAt: (section: string) => void;
   switchProject: (id: string) => void;
   finishSwitch: () => void;
   setSidebarView: (v: SidebarView) => void;
@@ -157,9 +162,16 @@ export const useStore = create<AppState>()(
       terminalHeight: 240,
       switching: false,
       pendingProjectId: null,
+      accountEmail: null,
+      settingsSection: "appearance",
 
       setSetting: (key, value) =>
         set((s) => ({ settings: { ...s.settings, [key]: value } })),
+
+      setAccountEmail: (email) => set({ accountEmail: email }),
+      setSettingsSection: (section) => set({ settingsSection: section }),
+      openSettingsAt: (section) =>
+        set({ showSettings: true, settingsSection: section }),
 
       // Request a masked project switch (App applies it on the next frame, behind
       // the grey loading overlay, so the heavy remount jank isn't visible).
@@ -293,6 +305,8 @@ export const useStore = create<AppState>()(
           // Never restore a mid-switch overlay state from disk.
           switching: false,
           pendingProjectId: null,
+          // Re-validated against the token at startup (App), so start blank.
+          accountEmail: null,
         };
       },
     }

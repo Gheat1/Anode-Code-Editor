@@ -2515,6 +2515,39 @@ input[type="range"] {
   color: var(--success);
 }
 
+/* ---- Activity-bar account button ---------------------------------------- */
+.account-btn .account-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000));
+}
+
+/* ---- Wizard account block ----------------------------------------------- */
+.wiz-account {
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--bg-panel);
+}
+.wiz-account-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.wiz-account-head svg {
+  color: var(--accent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

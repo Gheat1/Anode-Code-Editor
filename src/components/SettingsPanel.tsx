@@ -52,7 +52,8 @@ export function SettingsPanel() {
   const settings = useStore((s) => s.settings);
   const setSetting = useStore((s) => s.setSetting);
   const toggle = useStore((s) => s.toggle);
-  const [section, setSection] = useState<SectionId>("appearance");
+  const section = useStore((s) => s.settingsSection) as SectionId;
+  const setSection = useStore((s) => s.setSettingsSection);
   const [paletteName, setPaletteName] = useState("");
 
   function set<K extends keyof Settings>(k: K, v: Settings[K]) {
@@ -90,7 +91,7 @@ export function SettingsPanel() {
     }
   }
 
-  const activeLabel = SECTIONS.find((s) => s.id === section)!.label;
+  const activeLabel = (SECTIONS.find((s) => s.id === section) ?? SECTIONS[0]).label;
 
   return (
     <div className="settings-overlay" onClick={() => toggle("showSettings")}>

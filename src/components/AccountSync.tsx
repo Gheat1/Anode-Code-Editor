@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Icon } from "./Icon";
 import { account } from "../lib/account";
 import { useStore, DEFAULT_SETTINGS, Settings } from "../state/store";
@@ -7,22 +7,14 @@ import { useStore, DEFAULT_SETTINGS, Settings } from "../state/store";
 export function AccountSync() {
   const settings = useStore((s) => s.settings);
   const setSetting = useStore((s) => s.setSetting);
+  const email = useStore((s) => s.accountEmail); // signed-in identity (shared)
+  const setEmail = useStore((s) => s.setAccountEmail);
 
-  const [email, setEmail] = useState<string | null>(null); // signed-in identity
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [form, setForm] = useState({ email: "", password: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-
-  // Resolve the current session on mount.
-  useEffect(() => {
-    if (!account.isSignedIn()) return;
-    account
-      .me()
-      .then(setEmail)
-      .catch(() => account.logout()); // stale/invalid token
-  }, []);
 
   async function submit() {
     setError(null);

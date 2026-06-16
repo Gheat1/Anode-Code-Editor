@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
+import { AccountSync } from "./AccountSync";
 import { ProjectIconPicker } from "./ProjectIconPicker";
 import { useStore } from "../state/store";
 import { THEMES } from "../styles/themes";
@@ -116,17 +117,11 @@ function StepSignIn() {
       </div>
       {err && <div className="wiz-err">{err}</div>}
 
-      <div className="wiz-prov-row muted">
-        <div className="wiz-prov">
-          <Icon name="sync" size={22} />
+      <div className="wiz-account">
+        <div className="wiz-account-head">
+          <Icon name="sync" size={15} /> Anode account — sync settings &amp; palettes
         </div>
-        <div className="wiz-prov-body">
-          <div className="wiz-prov-title">Anode account</div>
-          <div className="wiz-prov-sub">
-            Sync settings &amp; palettes — sign in from Settings → Account Sync.
-          </div>
-        </div>
-        <span className="wiz-soon">later</span>
+        <AccountSync />
       </div>
     </div>
   );

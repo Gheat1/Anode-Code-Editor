@@ -34,7 +34,8 @@ export type IconName =
   | "split"
   | "palette"
   | "type"
-  | "sliders";
+  | "sliders"
+  | "user";
 
 const PATHS: Record<IconName, React.ReactNode> = {
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
@@ -162,6 +163,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <circle cx="9" cy="6" r="2" />
       <circle cx="15" cy="12" r="2" />
       <circle cx="7" cy="18" r="2" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" />
     </>
   ),
 };
